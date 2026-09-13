@@ -116,7 +116,7 @@ try:
     # PLAYER POSITION
     # ------------------------------
     rush_pos = (
-        pbp[["rusher_player_name", "rusher_player_position"]]
+        pbp[["rusher_player_name"]]
         .dropna()
         .drop_duplicates(subset=["rusher_player_name"])
         .rename(columns={
