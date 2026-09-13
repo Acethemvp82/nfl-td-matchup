@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import nflreadpy as nfl
 
 # -----------------------------
 # PAGE SETUP
@@ -10,53 +11,68 @@ st.set_page_config(
     layout="wide"
 )
 
-# -----------------------------
-# TITLE
-# -----------------------------
 st.title("🏈 NFL Anytime TD Matchup")
 st.caption("Finding the best touchdown opportunities through usage, scoring role, and matchup.")
 
 st.divider()
 
 # -----------------------------
-# SIDEBAR
+# LOAD NFL PLAY-BY-PLAY
 # -----------------------------
-st.sidebar.header("TD Matchup Settings")
+@st.cache_data(ttl=3600)
+def load_pbp():
+    pbp = nfl.load_pbp([2026])
+    return pbp.to_pandas()
 
-position = st.sidebar.multiselect(
-    "Positions",
-    ["RB", "WR", "TE"],
-    default=["RB", "WR", "TE"]
-)
+try:
+    with st.spinner("Loading 2026 NFL data..."):
+        pbp = load_pbp()
 
-st.sidebar.info(
-    "TD Matchup will evaluate red-zone usage, "
-    "goal-line opportunities, team scoring environment, "
-    "player usage, and opponent TD vulnerability."
-)
+    st.success("✅ 2026 NFL data connected!")
 
-# -----------------------------
-# TD MATCHUP BOARD
-# -----------------------------
-st.subheader("🎯 TD Matchup Board")
+    st.subheader("🏈 NFL Data Test")
 
-st.info(
-    "NFL data connection coming next. "
-    "This board will rank the strongest Anytime TD matchups."
-)
+    st.write(f"Play-by-play rows loaded: **{len(pbp):,}**")
 
-# Temporary test table
-test_data = pd.DataFrame({
-    "Rank": [1, 2, 3],
-    "Player": ["Test Player A", "Test Player B", "Test Player C"],
-    "Pos": ["RB", "WR", "TE"],
-    "Team": ["BUF", "DET", "PHI"],
-    "Opp": ["NYJ", "CHI", "DAL"],
-    "TD Match": [88, 79, 71]
-})
+    # Show available weeks
+    if "week" in pbp.columns:
+        weeks = sorted(pbp["week"].dropna().unique())
+        st.write("Weeks available:", weeks)
 
-st.dataframe(
-    test_data,
-    hide_index=True,
-    use_container_width=True
-)
+    # Find players with rushing or receiving opportunities
+    rushers = pd.DataFrame()
+    receivers = pd.DataFrame()
+
+    if "rusher_player_name" in pbp.columns:
+        rushers = (
+            pbp["rusher_player_name"]
+            .dropna()
+            .value_counts()
+            .head(25)
+            .reset_index()
+        )
+        rushers.columns = ["Player", "Rush Plays"]
+
+    if "receiver_player_name" in pbp.columns:
+        receivers = (
+            pbp["receiver_player_name"]
+            .dropna()
+            .value_counts()
+            .head(25)
+            .reset_index()
+        )
+        receivers.columns = ["Player", "Target Plays"]
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Top Rushers")
+        st.dataframe(rushers, hide_index=True, use_container_width=True)
+
+    with col2:
+        st.subheader("Top Targeted Players")
+        st.dataframe(receivers, hide_index=True, use_container_width=True)
+
+except Exception as e:
+    st.error("NFL data did not load.")
+    st.exception(e)
