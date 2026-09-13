@@ -369,11 +369,11 @@ try:
     # -----------------------------
     # Offensive opportunity component
     td_match["Offense_Score"] = (
-        td_match["RZ_Share"].clip(0, 70) / 70 * 25
-        + td_match["I10_Opp"].clip(0, 6) / 6 * 20
-        + td_match["I5_Opp"].clip(0, 4) / 4 * 15
-        + td_match["GL_Opp"].clip(0, 4) / 4 * 25
-        + td_match["RZ_Opp"].clip(0, 8) / 8 * 15
+        td_match["RZ_Share"].clip(0, 70) / 70 * 20
+        + td_match["I10_Opp"].clip(0, 6) / 6 * 10
+        + td_match["I5_Opp"].clip(0, 4) / 4 * 20
+        + td_match["GL_Opp"].clip(0, 4) / 4 * 20
+        + td_match["RZ_Opp"].clip(0, 8) / 8 * 30
    )
 
     # Defensive vulnerability component
