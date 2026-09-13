@@ -306,6 +306,119 @@ try:
         hide_index=True,
         use_container_width=True
     )
+        # -----------------------------
+    # UPCOMING MATCHUPS
+    # -----------------------------
+    st.divider()
+    st.subheader("🎯 TD Match")
+
+    @st.cache_data(ttl=3600)
+    def load_schedule():
+        return nfl.load_schedules([2026]).to_pandas()
+
+    schedule = load_schedule()
+
+    # Find the next unplayed regular-season week
+    future_games = schedule[
+        (schedule["game_type"] == "REG") &
+        (schedule["result"].isna())
+    ].copy()
+
+    next_week = int(future_games["week"].min())
+
+    next_games = future_games[
+        future_games["week"] == next_week
+    ].copy()
+
+    # Create team -> opponent map
+    matchup_rows = []
+
+    for _, game in next_games.iterrows():
+        matchup_rows.append({
+            "Team": game["home_team"],
+            "Opp": game["away_team"]
+        })
+        matchup_rows.append({
+            "Team": game["away_team"],
+            "Opp": game["home_team"]
+        })
+
+    matchup_map = pd.DataFrame(matchup_rows)
+
+    # Add upcoming opponent to player board
+    td_match = board.merge(
+        matchup_map,
+        on="Team",
+        how="inner"
+    )
+
+    # Add opponent defensive vulnerability
+    td_match = td_match.merge(
+        defense_board,
+        left_on="Opp",
+        right_on="Defense",
+        how="left",
+        suffixes=("", "_DEF")
+    )
+
+    # -----------------------------
+    # FIRST TD MATCH SCORE
+    # -----------------------------
+    # Offensive opportunity component
+    td_match["Offense_Score"] = (
+        td_match["RZ_Share"].clip(0, 70) / 70 * 30
+        + td_match["I10_Opp"].clip(0, 6) / 6 * 25
+        + td_match["I5_Opp"].clip(0, 4) / 4 * 25
+        + td_match["RZ_Opp"].clip(0, 8) / 8 * 20
+    )
+
+    # Defensive vulnerability component
+    td_match["Defense_Score"] = (
+        td_match["I5_Opp_Allowed"].clip(0, 6) / 6 * 40
+        + td_match["I10_Opp_Allowed"].clip(0, 10) / 10 * 30
+        + td_match["RZ_Opp_Allowed"].clip(0, 16) / 16 * 20
+        + td_match["TD_Allowed"].clip(0, 4) / 4 * 10
+    )
+
+    # 65% player opportunity / 35% opponent vulnerability
+    td_match["TD_Match"] = (
+        td_match["Offense_Score"] * 0.65
+        + td_match["Defense_Score"] * 0.35
+    ).round(1)
+
+    td_match = td_match.sort_values(
+        "TD_Match",
+        ascending=False
+    ).reset_index(drop=True)
+
+    td_match.insert(
+        0,
+        "TD_Rank",
+        range(1, len(td_match) + 1)
+    )
+
+    td_match_display = [
+        "TD_Rank",
+        "Player",
+        "Team",
+        "Opp",
+        "TD_Match",
+        "RZ_Share",
+        "RZ_Opp",
+        "I10_Opp",
+        "I5_Opp",
+        "I5_Opp_Allowed",
+        "I10_Opp_Allowed",
+        "TD_Allowed"
+    ]
+
+    st.write(f"**Upcoming week:** {next_week}")
+
+    st.dataframe(
+        td_match[td_match_display],
+        hide_index=True,
+        use_container_width=True
+    )
   
 
 except Exception as e:
