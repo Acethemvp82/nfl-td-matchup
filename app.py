@@ -47,7 +47,7 @@ try:
 
     rush["RZ"] = (rush["yardline_100"] <= 20).astype(int)
     rush["I10"] = (rush["yardline_100"] <= 10).astype(int)
-    rush["GL"] = (rush["yardline_100"] <= 5).astype(int)
+    rush["GL"] = (rush["yardline_100"] <= 3).astype(int)
     rush["I5"] = (rush["yardline_100"] <= 5).astype(int)
     rush["Rush_TD"] = (rush["touchdown"] == 1).astype(int)
     rush_summary = (
@@ -81,7 +81,7 @@ try:
     targets["RZ"] = (targets["yardline_100"] <= 20).astype(int)
     targets["I10"] = (targets["yardline_100"] <= 10).astype(int)
     targets["I5"] = (targets["yardline_100"] <= 5).astype(int)
-    targets["GL"] = (targets["yardline_100"] <= 5).astype(int)
+    targets["GL"] = (targets["yardline_100"] <= 3).astype(int)
     targets["Rec_TD"] = (targets["touchdown"] == 1).astype(int)
     rec_summary = (
         targets.groupby(
