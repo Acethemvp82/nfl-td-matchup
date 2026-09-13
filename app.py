@@ -113,38 +113,38 @@ try:
         how="outer"
     ).fillna(0)
     # ------------------------------
-# PLAYER POSITION
-# ------------------------------
-rush_pos = (
-    pbp[["rusher_player_name", "rusher_player_position"]]
-    .dropna()
-    .drop_duplicates(subset=["rusher_player_name"])
-    .rename(columns={
-        "rusher_player_name": "Player",
-        "rusher_player_position": "Position"
-    })
-)
+  # PLAYER POSITION
+  # ------------------------------
+  rush_pos = (
+      pbp[["rusher_player_name", "rusher_player_position"]]
+      .dropna()
+      .drop_duplicates(subset=["rusher_player_name"])
+      .rename(columns={
+          "rusher_player_name": "Player",
+          "rusher_player_position": "Position"
+      })
+  )
 
-rec_pos = (
-    pbp[["receiver_player_name", "receiver_player_position"]]
-    .dropna()
-    .drop_duplicates(subset=["receiver_player_name"])
-    .rename(columns={
-        "receiver_player_name": "Player",
-        "receiver_player_position": "Position"
-    })
-)
+  rec_pos = (
+      pbp[["receiver_player_name", "receiver_player_position"]]
+      .dropna()
+      .drop_duplicates(subset=["receiver_player_name"])
+      .rename(columns={
+          "receiver_player_name": "Player",
+          "receiver_player_position": "Position"
+      })
+  )
 
-player_pos = (
-    pd.concat([rush_pos, rec_pos])
-    .drop_duplicates(subset=["Player"])
-)
+  player_pos = (
+      pd.concat([rush_pos, rec_pos])
+      .drop_duplicates(subset=["Player"])
+  )
 
-board = board.merge(
-    player_pos,
-    on="Player",
-    how="left"
-)
+  board = board.merge(
+      player_pos,
+      on="Player",
+     how="left"
+  )
 
     numeric_cols = [
         "Rush_Att",
