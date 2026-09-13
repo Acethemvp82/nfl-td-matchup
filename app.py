@@ -318,13 +318,13 @@ try:
 
     schedule = load_schedule()
 
-   # Use the week after the latest completed PBP week
+  # Use the week after the latest completed PBP week
    next_week = current_week + 1
 
    next_games = schedule[
        (schedule["game_type"] == "REG") &
        (schedule["week"] == next_week)
-   ].copy()
+   ].copy() 
 
     # Create team -> opponent map
     matchup_rows = []
