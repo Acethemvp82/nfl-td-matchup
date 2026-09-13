@@ -198,12 +198,115 @@ try:
         "Rec_TD",
         "TDs"
     ]
+    # -----------------------------
+    # DEFENSIVE TD VULNERABILITY
+    # -----------------------------
+    st.divider()
+    st.subheader("🛡️ Opponent TD Vulnerability")
+
+    # Rushing opportunities allowed
+    def_rush = (
+        rush.groupby("defteam")
+        .agg(
+            RZ_Rush_Allowed=("RZ", "sum"),
+            I10_Rush_Allowed=("I10", "sum"),
+            I5_Rush_Allowed=("I5", "sum"),
+            Rush_TD_Allowed=("Rush_TD", "sum")
+        )
+        .reset_index()
+        .rename(columns={"defteam": "Defense"})
+    )
+
+    # Receiving opportunities allowed
+    def_rec = (
+        targets.groupby("defteam")
+        .agg(
+            RZ_Tgt_Allowed=("RZ", "sum"),
+            I10_Tgt_Allowed=("I10", "sum"),
+            I5_Tgt_Allowed=("I5", "sum"),
+            Rec_TD_Allowed=("Rec_TD", "sum")
+        )
+        .reset_index()
+        .rename(columns={"defteam": "Defense"})
+    )
+
+    defense_board = pd.merge(
+        def_rush,
+        def_rec,
+        on="Defense",
+        how="outer"
+    ).fillna(0)
+
+    def_numeric = [
+        "RZ_Rush_Allowed",
+        "I10_Rush_Allowed",
+        "I5_Rush_Allowed",
+        "Rush_TD_Allowed",
+        "RZ_Tgt_Allowed",
+        "I10_Tgt_Allowed",
+        "I5_Tgt_Allowed",
+        "Rec_TD_Allowed"
+    ]
+
+    for col in def_numeric:
+        defense_board[col] = defense_board[col].astype(int)
+
+    # Total scoring-area opportunities allowed
+    defense_board["RZ_Opp_Allowed"] = (
+        defense_board["RZ_Rush_Allowed"] +
+        defense_board["RZ_Tgt_Allowed"]
+    )
+
+    defense_board["I10_Opp_Allowed"] = (
+        defense_board["I10_Rush_Allowed"] +
+        defense_board["I10_Tgt_Allowed"]
+    )
+
+    defense_board["I5_Opp_Allowed"] = (
+        defense_board["I5_Rush_Allowed"] +
+        defense_board["I5_Tgt_Allowed"]
+    )
+
+    defense_board["TD_Allowed"] = (
+        defense_board["Rush_TD_Allowed"] +
+        defense_board["Rec_TD_Allowed"]
+    )
+
+    # Rank most vulnerable defenses first
+    defense_board = defense_board.sort_values(
+        by=[
+            "I5_Opp_Allowed",
+            "I10_Opp_Allowed",
+            "RZ_Opp_Allowed"
+        ],
+        ascending=False
+    )
+
+    defense_board.insert(
+        0,
+        "Rank",
+        range(1, len(defense_board) + 1)
+    )
+
+    defense_display = [
+        "Rank",
+        "Defense",
+        "RZ_Opp_Allowed",
+        "I10_Opp_Allowed",
+        "I5_Opp_Allowed",
+        "RZ_Rush_Allowed",
+        "RZ_Tgt_Allowed",
+        "Rush_TD_Allowed",
+        "Rec_TD_Allowed",
+        "TD_Allowed"
+    ]
 
     st.dataframe(
-        board[display_cols],
+        defense_board[defense_display],
         hide_index=True,
         use_container_width=True
     )
+  
 
 except Exception as e:
     st.error("NFL TD opportunity calculation failed.")
