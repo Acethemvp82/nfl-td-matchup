@@ -411,6 +411,7 @@ try:
         "RZ_Opp",
         "I10_Opp",
         "I5_Opp",
+        "GL_Opp",
         "I5_Opp_Allowed",
         "I10_Opp_Allowed",
         "TD_Allowed"
