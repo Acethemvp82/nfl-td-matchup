@@ -47,6 +47,7 @@ try:
 
     rush["RZ"] = (rush["yardline_100"] <= 20).astype(int)
     rush["I10"] = (rush["yardline_100"] <= 10).astype(int)
+    rush["GL"] = (rush["yardline_100"] <= 5).astype(int)
     rush["I5"] = (rush["yardline_100"] <= 5).astype(int)
     rush["Rush_TD"] = (rush["touchdown"] == 1).astype(int)
     rush_summary = (
@@ -59,6 +60,7 @@ try:
             RZ_Rush=("RZ", "sum"),
             I10_Rush=("I10", "sum"),
             I5_Rush=("I5", "sum"),
+            GL_Carries=("GL", "sum"),
             Rush_TD=("Rush_TD", "sum")
         )
         .reset_index()
@@ -79,6 +81,7 @@ try:
     targets["RZ"] = (targets["yardline_100"] <= 20).astype(int)
     targets["I10"] = (targets["yardline_100"] <= 10).astype(int)
     targets["I5"] = (targets["yardline_100"] <= 5).astype(int)
+    targets["GL"] = (targets["yardline_100"] <= 5).astype(int)
     targets["Rec_TD"] = (targets["touchdown"] == 1).astype(int)
     rec_summary = (
         targets.groupby(
@@ -90,6 +93,7 @@ try:
             RZ_Tgt=("RZ", "sum"),
             I10_Tgt=("I10", "sum"),
             I5_Tgt=("I5", "sum"),
+            GL_Targets=("GL", "sum"),
             Rec_TD=("Rec_TD", "sum")
         )
         .reset_index()
@@ -114,11 +118,13 @@ try:
         "RZ_Rush",
         "I10_Rush",
         "I5_Rush",
+        "GL_Carries",
         "Rush_TD",
         "Targets",
         "RZ_Tgt",
         "I10_Tgt",
         "I5_Tgt",
+        "GL_Targets",
         "Rec_TD"
     ]
 
@@ -131,6 +137,7 @@ try:
     board["RZ_Opp"] = board["RZ_Rush"] + board["RZ_Tgt"]
     board["I10_Opp"] = board["I10_Rush"] + board["I10_Tgt"]
     board["I5_Opp"] = board["I5_Rush"] + board["I5_Tgt"]
+    board["GL_Opp"] = board["GL_Carries"] + board["GL_Targets"]
 
     board["TDs"] = board["Rush_TD"] + board["Rec_TD"]
 
