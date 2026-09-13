@@ -207,4 +207,4 @@ try:
 
 except Exception as e:
     st.error("NFL TD opportunity calculation failed.")
-    st.exception(e)
+    st.exception(e) 
