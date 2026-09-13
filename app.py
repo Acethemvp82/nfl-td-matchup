@@ -318,17 +318,13 @@ try:
 
     schedule = load_schedule()
 
-    # Find the next unplayed regular-season week
-    future_games = schedule[
-        (schedule["game_type"] == "REG") &
-        (schedule["result"].isna())
-    ].copy()
+   # Use the week after the latest completed PBP week
+next_week = current_week + 1
 
-    next_week = int(future_games["week"].min())
-
-    next_games = future_games[
-        future_games["week"] == next_week
-    ].copy()
+next_games = schedule[
+    (schedule["game_type"] == "REG") &
+    (schedule["week"] == next_week)
+].copy()
 
     # Create team -> opponent map
     matchup_rows = []
