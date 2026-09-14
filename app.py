@@ -423,7 +423,17 @@ try:
     # -----------------------------
     st.divider()
     st.subheader("🎯 TD Match")
-
+    slate = st.selectbox(
+        "Select slate",
+        [
+            "All Games",
+            "Thursday",
+            "Sunday Early",
+            "Sunday Late",
+            "Sunday Night",
+            "Monday Night"
+        ]
+    )
     @st.cache_data(ttl=3600)
     def load_schedule():
         return nfl.load_schedules([2026]).to_pandas()
