@@ -71,7 +71,7 @@ try:
             "rusher_player_name": "Player",
             "posteam": "Team"   
          })
-
+    )
     # -----------------------------
     # RECEIVING OPPORTUNITIES
     # -----------------------------
