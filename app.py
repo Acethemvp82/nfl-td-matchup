@@ -568,7 +568,7 @@ try:
             return "PASS"
 
 
-td_match["Bet_Tier"] = td_match.apply(td_bet_tier, axis=1)
+    td_match["Bet_Tier"] = td_match.apply(td_bet_tier, axis=1)
     td_match_display = [
         "TD_Rank",
         "Player",
