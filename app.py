@@ -161,30 +161,31 @@ try:
     for col in numeric_cols:
         board[col] = board[col].astype(int)
     # ------------------------------
- # QB RUSHING TD THREAT
- # ------------------------------
- def qb_rush_threat(row):
-     if row["Position"] != "QB":
-         return ""
+    # ------------------------------
+    # QB RUSHING TD THREAT
+    # ------------------------------
+    def qb_rush_threat(row):
+        if row["Position"] != "QB":
+            return ""
 
-     if (
-         row["GL_Carries"] >= 1
-         or row["I5_Rush"] >= 2
-         or row["I10_Rush"] >= 3
-     ):
-         return "🔥🔥 HIGH"
+        if (
+            row["GL_Carries"] >= 1
+            or row["I5_Rush"] >= 2
+            or row["I10_Rush"] >= 3
+        ):
+            return "🔥🔥 HIGH"
 
-     elif (
-         row["I10_Rush"] >= 1
-         or row["RZ_Rush"] >= 2
-         or row["Rush_Att"] >= 5
-     ):
-         return "🔥 MEDIUM"
+        elif (
+            row["I10_Rush"] >= 1
+            or row["RZ_Rush"] >= 2
+            or row["Rush_Att"] >= 5
+        ):
+            return "🔥 MEDIUM"
 
-     else:
-         return "LOW"
+        else:
+            return "LOW"
 
- board["QB_Rush_Threat"] = board.apply(qb_rush_threat, axis=1)
+    board["QB_Rush_Threat"] = board.apply(qb_rush_threat, axis=1)
     # -----------------------------
     # TOTAL TD OPPORTUNITIES
     # -----------------------------
