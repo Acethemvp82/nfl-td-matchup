@@ -495,22 +495,24 @@ try:
     ],
     right=False
 ) 
-    td_match_display = [
-        "TD_Rank",
-        "Player",
-        "Team",
-        "Opp",
-        "TD_Match",
-        "TD_Grade",
-        "RZ_Share",
-        "RZ_Opp",
-        "I10_Opp",
-        "I5_Opp",
-        "GL_Opp",
-        "I5_Opp_Allowed",
-        "I10_Opp_Allowed",
-        "TD_Allowed"
-    ]
+td_match_display = [
+    "TD_Rank",
+    "Player",
+    "Team",
+    "Opp",
+    "Position",
+    "TD_Match",
+    "TD_Grade",
+    "QB_Rush_Threat",
+    "RZ_Share",
+    "RZ_Opp",
+    "I10_Opp",
+    "I5_Opp",
+    "GL_Opp",
+    "I5_Opp_Allowed",
+    "I10_Opp_Allowed",
+    "TD_Allowed"
+]    
 
     st.write(f"**Upcoming week:** {next_week}")
 
