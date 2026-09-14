@@ -117,30 +117,28 @@ try:
     # ------------------------------
     # PLAYER POSITION
     # ------------------------------
-    rush_pos = (
-        pbp[["rusher_player_name"]]
-        .dropna()
-        .drop_duplicates(subset=["rusher_player_name"])
-        .rename(columns={
-            "rusher_player_name": "Player",
-            "rusher_player_position": "Position"
-        })
-    )
+    # Use official roster positions
+roster_pos = (
+    rosters[["full_name", "team", "position"]]
+    .dropna(subset=["full_name"])
+    .drop_duplicates(subset=["full_name"])
+    .rename(columns={
+        "full_name": "Player",
+        "team": "Team",
+        "position": "Position"
+    })
+)
 
-    rec_pos = (
-        pbp[["receiver_player_name"]]
-        .dropna()
-        .drop_duplicates(subset=["receiver_player_name"])
-        .rename(columns={
-            "receiver_player_name": "Player",
-            "receiver_player_position": "Position"
-        })
-    )
+board = board.merge(
+    roster_pos,
+    on=["Player", "Team"],
+    how="left"
+)
 
-    player_pos = (
-        pd.concat([rush_pos, rec_pos])
-        .drop_duplicates(subset=["Player"])
-    )
+# Keep TD-relevant offensive positions, including QBs
+board = board[
+    board["Position"].isin(["QB", "RB", "WR", "TE"])
+].copy()
 
     board = board.merge(
         player_pos,
