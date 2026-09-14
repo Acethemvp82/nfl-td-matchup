@@ -485,6 +485,22 @@ try:
                 return "background-color: #9b1c1c; color: white; font-weight: bold;"
         except:
             return ""
+    def color_def_vulnerability(val):
+        try:
+            val = float(val)
+
+            if val >= 8:
+                return "background-color: #0b6623; color: white; font-weight: bold;"
+            elif val >= 6:
+                return "background-color: #2e8b57; color: white; font-weight: bold;"
+            elif val >= 4:
+               return "background-color: #d4ac0d; color: black; font-weight: bold;"
+            elif val >= 2:
+                return "background-color: #d97706; color: white; font-weight: bold;"
+            else:
+                return "background-color: #9b1c1c; color: white; font-weight: bold;"
+        except:
+            return ""
     styled_td = (
        td_match[td_match_display]
        .style
@@ -496,6 +512,10 @@ try:
           color_rz_share,
           subset=["RZ_Share"]
     )
+     .map(
+         color_def_vulnerability,
+         subset=["I5_Opp_Allowed", "I10_Opp_Allowed", "TD_Allowed"]
+    )   
         .format({
           
           "TD_Match": "{:.1f}",
