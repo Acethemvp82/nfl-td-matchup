@@ -470,16 +470,16 @@ try:
         except:
             return ""
 
-styled_td = td_match[td_match_display].style.map(
-    color_td_match,
-    subset=["TD_Match"]
-)
+    styled_td = td_match[td_match_display].style.map(
+        color_td_match,
+        subset=["TD_Match"]
+    )
 
-st.dataframe(
-    styled_td,
-    hide_index=True,
-    use_container_width=True
-)
+    st.dataframe(
+        styled_td,
+        hide_index=True,
+        use_container_width=True
+    )
   
 
 except Exception as e:
