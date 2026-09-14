@@ -36,8 +36,8 @@ try:
     current_week = int(pbp["week"].dropna().max())
 
     st.write(
-        f"**2026 plays loaded:** {len(pbp):,}  |  "
-        f"**Latest week in data:** {current_week}"
+        f"📊 **Model Data:** 2026 season through Week {current_week} | "
+        f"**Plays loaded:** {len(pbp):,}"
     )
 
     # -----------------------------
