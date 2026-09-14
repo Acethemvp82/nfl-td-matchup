@@ -458,7 +458,21 @@ try:
         td_match["Offense_Score"] * 0.65
         + td_match["Defense_Score"] * 0.35
     ).round(1)
+    td_match["QB_Bonus"] = 0
 
+    td_match.loc[
+        td_match["QB_Rush_Threat"] == "🔥🔥 HIGH",
+        "QB_Bonus"
+    ] = 6
+
+    td_match.loc[
+        td_match["QB_Rush_Threat"] == "🔥 MEDIUM",
+        "QB_Bonus"
+    ] = 3
+
+    td_match["TD_Match"] = (
+        td_match["TD_Match"] + td_match["QB_Bonus"]
+    ).round(1)
     td_match = td_match.sort_values(
         "TD_Match",
         ascending=False
