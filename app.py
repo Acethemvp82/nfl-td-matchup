@@ -29,7 +29,7 @@ try:
     with st.spinner("Loading 2026 NFL play-by-play..."):
         pbp = load_pbp()
         rosters = load_rosters()
-        st.write(rosters.columns.tolist())
+        
     st.success("✅ NFL play-by-play connected")
 
     # Clean week display
@@ -121,11 +121,11 @@ try:
     # ------------------------------
     # Use official roster positions
     roster_pos = (
-        rosters[["full_name", "team", "position"]]
-        .dropna(subset=["full_name"])
-        .drop_duplicates(subset=["full_name"])
+        rosters[["gsis_id", "team", "position"]]
+        .dropna(subset=["gsis_id"])
+        .drop_duplicates(subset=["gsis_id"])
         .rename(columns={
-            "full_name": "Player",
+            "gsis_id": "Player_ID",
             "team": "Team",
             "position": "Position"
         })
@@ -133,7 +133,7 @@ try:
 
     board = board.merge(
         roster_pos,
-        on=["Player", "Team"],
+        on=["Player_ID", "Team"],
         how="left"
     )
 
