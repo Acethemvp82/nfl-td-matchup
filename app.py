@@ -104,7 +104,7 @@ try:
             "receiver_player_name": "Player",
             "posteam": "Team"
          })
-    )
+         )
 
     # -----------------------------
     # COMBINE RUSH + RECEIVING
@@ -112,7 +112,7 @@ try:
     board = pd.merge(
         rush_summary,
         rec_summary,
-        on=["Player", "Team"],
+        on=["Player_ID", "Player", "Team"],
         how="outer"
     ).fillna(0)
     # ------------------------------
