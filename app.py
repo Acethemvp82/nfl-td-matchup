@@ -581,7 +581,7 @@ try:
         "Rush_TD_Signal",
         "Rec_TD_Signal",
         "Bet_Tier",
-        "RZ_Opp"
+        "RZ_Opp",
         "QB_Rush_Threat",
         "I10_Opp",
         "I5_Opp",
