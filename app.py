@@ -532,40 +532,40 @@ try:
     right=False
 ) 
     # ------------------------------
-# FINAL ANYTIME TD BET TIER
-# ------------------------------
-def td_bet_tier(row):
-    match = row["TD_Match"]
-    grade = str(row["TD_Grade"])
-    rush_sig = row["Rush_TD_Signal"]
-    rec_sig = row["Rec_TD_Signal"]
+    # FINAL ANYTIME TD BET TIER
+    # ------------------------------
+    def td_bet_tier(row):
+        match = row["TD_Match"]
+        grade = str(row["TD_Grade"])
+        rush_sig = row["Rush_TD_Signal"]
+        rec_sig = row["Rec_TD_Signal"]
 
-    high_path = (
-        rush_sig == "🔥🔥 HIGH"
-        or rec_sig == "🔥🔥 HIGH"
-        or row["QB_Rush_Threat"] == "🔥🔥 HIGH"
-    )
+        high_path = (
+            rush_sig == "🔥🔥 HIGH"
+            or rec_sig == "🔥🔥 HIGH"
+            or row["QB_Rush_Threat"] == "🔥🔥 HIGH"
+        )
 
-    medium_path = (
-        rush_sig == "🔥 MEDIUM"
-        or rec_sig == "🔥 MEDIUM"
-        or row["QB_Rush_Threat"] == "🔥 MEDIUM"
-    )
+        medium_path = (
+            rush_sig == "🔥 MEDIUM"
+            or rec_sig == "🔥 MEDIUM"
+            or row["QB_Rush_Threat"] == "🔥 MEDIUM"
+        )
 
-    if match >= 70 and high_path:
-        return "💎 TOP PLAY"
+        if match >= 70 and high_path:
+            return "💎 TOP PLAY"
 
-    elif match >= 60 and (high_path or medium_path):
-        return "🔥 STRONG BET"
+        elif match >= 60 and (high_path or medium_path):
+            return "🔥 STRONG BET"
 
-    elif match >= 50 and high_path:
-        return "✅ PLAYABLE"
+        elif match >= 50 and high_path:
+            return "✅ PLAYABLE"
 
-    elif match >= 45 and (high_path or medium_path):
-        return "👀 LEAN"
+        elif match >= 45 and (high_path or medium_path):
+            return "👀 LEAN"
 
-    else:
-        return "PASS"
+        else:
+            return "PASS"
 
 
 td_match["Bet_Tier"] = td_match.apply(td_bet_tier, axis=1)
