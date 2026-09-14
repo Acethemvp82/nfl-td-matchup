@@ -126,7 +126,7 @@ try:
     )
 
     rec_pos = (
-        pbp[["receiver_player_name", "receiver_player_position"]]
+        pbp[["receiver_player_name"]]
         .dropna()
         .drop_duplicates(subset=["receiver_player_name"])
         .rename(columns={
