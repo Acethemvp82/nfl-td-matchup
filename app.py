@@ -470,10 +470,21 @@ try:
         except:
             return ""
 
-    styled_td = td_match[td_match_display].style.map(
-        color_td_match,
-        subset=["TD_Match"]
-    )
+    styled_td = (
+       td_match[td_match_display]
+       .style
+      .map(
+          color_td_match,
+          subset=["TD_Match"]
+      )
+      .format({
+          "TD_Match": "{:.1f}",
+          "RZ_Share": "{:.1f}",
+          "I5_Opp_Allowed": "{:.0f}",
+          "I10_Opp_Allowed": "{:.0f}",
+          "TD_Allowed": "{:.0f}"
+      })
+  )
 
     st.dataframe(
         styled_td,
