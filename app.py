@@ -118,27 +118,27 @@ try:
     # PLAYER POSITION
     # ------------------------------
     # Use official roster positions
-roster_pos = (
-    rosters[["full_name", "team", "position"]]
-    .dropna(subset=["full_name"])
-    .drop_duplicates(subset=["full_name"])
-    .rename(columns={
-        "full_name": "Player",
-        "team": "Team",
-        "position": "Position"
-    })
-)
+    roster_pos = (
+        rosters[["full_name", "team", "position"]]
+        .dropna(subset=["full_name"])
+        .drop_duplicates(subset=["full_name"])
+        .rename(columns={
+            "full_name": "Player",
+            "team": "Team",
+            "position": "Position"
+        })
+    )
 
-board = board.merge(
-    roster_pos,
-    on=["Player", "Team"],
-    how="left"
-)
+    board = board.merge(
+        roster_pos,
+        on=["Player", "Team"],
+        how="left"
+    )
 
-# Keep TD-relevant offensive positions, including QBs
-board = board[
-    board["Position"].isin(["QB", "RB", "WR", "TE"])
-].copy()
+    # Keep TD-relevant offensive positions, including QBs
+    board = board[
+        board["Position"].isin(["QB", "RB", "WR", "TE"])
+    ].copy()
 
     board = board.merge(
         player_pos,
