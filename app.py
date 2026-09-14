@@ -202,7 +202,43 @@ try:
     board["GL_Opp"] = board["GL_Carries"] + board["GL_Targets"]
 
     board["TDs"] = board["Rush_TD"] + board["Rec_TD"]
+    # ------------------------------
+    # RUSH / RECEIVING TD SIGNALS
+    # ------------------------------
+    def rush_td_signal(row):
+        if (
+            row["GL_Carries"] >= 1
+            or row["I5_Rush"] >= 2
+            or row["I10_Rush"] >= 3
+        ):
+            return "🔥🔥 HIGH"
+        elif (
+            row["I5_Rush"] >= 1
+            or row["I10_Rush"] >= 1
+            or row["RZ_Rush"] >= 2
+        ):
+            return "🔥 MEDIUM"
+        else:
+            return "LOW"
 
+    def rec_td_signal(row):
+        if (
+            row["GL_Targets"] >= 1
+            or row["I5_Tgt"] >= 2
+            or row["I10_Tgt"] >= 3
+        ):
+            return "🔥🔥 HIGH"
+        elif (
+            row["I5_Tgt"] >= 1
+            or row["I10_Tgt"] >= 1
+            or row["RZ_Tgt"] >= 2
+        ):
+            return "🔥 MEDIUM"
+        else:
+            return "LOW"
+
+    board["Rush_TD_Signal"] = board.apply(rush_td_signal, axis=1)
+    board["Rec_TD_Signal"] = board.apply(rec_td_signal, axis=1)
     # -----------------------------
     # TEAM RED-ZONE SHARE
     # -----------------------------
