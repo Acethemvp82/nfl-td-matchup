@@ -140,10 +140,6 @@ try:
         board["Position"].isin(["QB", "RB", "WR", "TE"])
     ].copy()
 
-    board = board.merge(
-        player_pos,
-        on="Player",
-        how="left"
     )
   
 
