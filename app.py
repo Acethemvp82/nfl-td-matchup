@@ -54,7 +54,7 @@ try:
     rush["Rush_TD"] = (rush["touchdown"] == 1).astype(int)
     rush_summary = (
         rush.groupby(
-            ["rusher_player_name", "posteam"],
+            ["rusher_player_id", "rusher_player_name", "posteam"],
             dropna=False
         )
         .agg(
@@ -67,10 +67,10 @@ try:
         )
         .reset_index()
         .rename(columns={
+            "rusher_player_id": "Player_ID",
             "rusher_player_name": "Player",
-            "posteam": "Team"
-        })
-    )
+            "posteam": "Team   
+         })
 
     # -----------------------------
     # RECEIVING OPPORTUNITIES
@@ -87,7 +87,7 @@ try:
     targets["Rec_TD"] = (targets["touchdown"] == 1).astype(int)
     rec_summary = (
         targets.groupby(
-            ["receiver_player_name", "posteam"],
+            ["receiver_player_id", "receiver_player_name", "posteam"],
             dropna=False
         )
         .agg(
@@ -100,9 +100,10 @@ try:
         )
         .reset_index()
         .rename(columns={
+            "receiver_player_id": "Player_ID",
             "receiver_player_name": "Player",
             "posteam": "Team"
-        })
+         })
     )
 
     # -----------------------------
