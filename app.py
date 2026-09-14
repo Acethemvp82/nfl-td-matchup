@@ -22,11 +22,13 @@ st.divider()
 @st.cache_data(ttl=3600)
 def load_pbp():
     return nfl.load_pbp([2026]).to_pandas()
-
+@st.cache_data(ttl=3600)
+def load_rosters():
+    return nfl.load_rosters([2026]).to_pandas()
 try:
     with st.spinner("Loading 2026 NFL play-by-play..."):
         pbp = load_pbp()
-
+        rosters = load_rosters()
     st.success("✅ NFL play-by-play connected")
 
     # Clean week display
