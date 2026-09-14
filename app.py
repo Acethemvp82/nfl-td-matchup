@@ -437,9 +437,15 @@ try:
     td_match["TD_Grade"] = pd.cut(
     td_match["TD_Match"],
     bins=[-float("inf"), 40, 50, 60, 70, float("inf")],
-    labels=["WEAK", "MODERATE", "GOOD", "STRONG", "ELITE"],
+    labels=[
+        "❌ WEAK",
+        "⚠️ MODERATE",
+        "🔥 GOOD",
+        "🔥🔥 STRONG",
+        "🔥🔥🔥 ELITE"
+    ],
     right=False
-)
+) 
     td_match_display = [
         "TD_Rank",
         "Player",
