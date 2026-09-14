@@ -267,6 +267,11 @@ try:
         "Rec_TD",
         "TDs"
     ]
+    st.dataframe(
+    board[display_cols],
+    hide_index=True,
+    use_container_width=True
+    )
     # -----------------------------
     # DEFENSIVE TD VULNERABILITY
     # -----------------------------
