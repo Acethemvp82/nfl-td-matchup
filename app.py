@@ -29,6 +29,7 @@ try:
     with st.spinner("Loading 2026 NFL play-by-play..."):
         pbp = load_pbp()
         rosters = load_rosters()
+        st.write(rosters.columns.tolist())
     st.success("✅ NFL play-by-play connected")
 
     # Clean week display
