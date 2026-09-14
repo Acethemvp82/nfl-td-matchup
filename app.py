@@ -259,6 +259,8 @@ try:
         "Rank",
         "Player",
         "Team",
+        "Position",
+        "QB_Rush_Threat",
         "RZ_Opp",
         "RZ_Share",
         "I10_Opp",
