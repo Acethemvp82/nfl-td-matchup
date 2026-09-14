@@ -140,7 +140,7 @@ try:
         board["Position"].isin(["QB", "RB", "WR", "TE"])
     ].copy()
 
-    )
+    
   
 
     numeric_cols = [
