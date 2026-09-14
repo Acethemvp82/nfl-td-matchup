@@ -113,8 +113,18 @@ try:
     board = pd.merge(
         rush_summary,
         rec_summary,
-        on=["Player_ID", "Player", "Team"],
-        how="outer"
+        on=["Player", "Team"],
+        how="outer",
+        suffixes=("_rush", "_rec")
+    )
+
+    board["Player_ID"] = (
+        board["Player_ID_rush"]
+        .combine_first(board["Player_ID_rec"])
+    )
+
+    board = board.drop(
+        columns=["Player_ID_rush", "Player_ID_rec"]
     ).fillna(0)
     # ------------------------------
     # PLAYER POSITION
