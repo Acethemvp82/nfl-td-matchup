@@ -434,13 +434,26 @@ try:
         "TD_Rank",
         range(1, len(td_match) + 1)
     )
+def td_grade(score):
+    if score >= 70:
+        return "ELITE"
+    elif score >= 60:
+        return "STRONG"
+    elif score >= 50:
+        return "GOOD"
+    elif score >= 40:
+        return "MODERATE"
+    else:
+        return "WEAK"
 
+td_match["TD_Grade"] = td_match["TD_Match"].apply(td_grade)
     td_match_display = [
         "TD_Rank",
         "Player",
         "Team",
         "Opp",
         "TD_Match",
+        "TD_Grade",
         "RZ_Share",
         "RZ_Opp",
         "I10_Opp",
