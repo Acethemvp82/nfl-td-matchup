@@ -454,21 +454,21 @@ try:
     st.write(f"**Upcoming week:** {next_week}")
 
     def color_td_match(val):
-    try:
-        val = float(val)
+        try:
+            val = float(val)
 
-        if val >= 70:
-            return "background-color: #0b6623; color: white; font-weight: bold;"
-        elif val >= 60:
-            return "background-color: #2e8b57; color: white; font-weight: bold;"
-        elif val >= 50:
-            return "background-color: #d4ac0d; color: black; font-weight: bold;"
-        elif val >= 40:
-            return "background-color: #d97706; color: white; font-weight: bold;"
-        else:
-            return "background-color: #9b1c1c; color: white; font-weight: bold;"
-    except:
-        return ""
+            if val >= 70:
+                return "background-color: #0b6623; color: white; font-weight: bold;"
+            elif val >= 60:
+                return "background-color: #2e8b57; color: white; font-weight: bold;"
+            elif val >= 50:
+                return "background-color: #d4ac0d; color: black; font-weight: bold;"
+            elif val >= 40:
+                return "background-color: #d97706; color: white; font-weight: bold;"
+            else:
+                return "background-color: #9b1c1c; color: white; font-weight: bold;"
+        except:
+            return ""
 
 styled_td = td_match[td_match_display].style.map(
     color_td_match,
