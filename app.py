@@ -447,8 +447,44 @@ try:
         (schedule["game_type"] == "REG") &
         (schedule["week"] == next_week)
     ].copy() 
+    # ------------------------------
+    # SLATE FILTER
+    # ------------------------------
+    next_games["Game_Hour"] = pd.to_datetime(
+        next_games["gametime"],
+        format="%H:%M",
+        errors="coerce"
+    ).dt.hour
 
-    # Create team -> opponent map
+    if slate == "Thursday":
+        next_games = next_games[
+            next_games["weekday"] == "Thursday"
+        ].copy()
+
+    elif slate == "Sunday Early":
+        next_games = next_games[
+            (next_games["weekday"] == "Sunday") &
+            (next_games["Game_Hour"] < 16)
+        ].copy()
+
+    elif slate == "Sunday Late":
+        next_games = next_games[
+            (next_games["weekday"] == "Sunday") &
+            (next_games["Game_Hour"] >= 16) &
+            (next_games["Game_Hour"] < 20)
+        ].copy()
+
+    elif slate == "Sunday Night":
+        next_games = next_games[
+            (next_games["weekday"] == "Sunday") &
+            (next_games["Game_Hour"] >= 20)
+        ].copy()
+
+    elif slate == "Monday Night":
+        next_games = next_games[
+            next_games["weekday"] == "Monday"
+       ].copy()
+   # Create team -> opponent map
     matchup_rows = []
 
     for _, game in next_games.iterrows():
