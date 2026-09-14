@@ -540,6 +540,8 @@ try:
         "TD_Match",
         "TD_Grade",
         "QB_Rush_Threat",
+        "Rush_TD_Signal",
+        "Rec_TD_Signal",
         "RZ_Share",
         "RZ_Opp",
         "I10_Opp",
