@@ -469,7 +469,22 @@ try:
                 return "background-color: #9b1c1c; color: white; font-weight: bold;"
         except:
             return ""
+     def color_rz_share(val):
+         try:
+             val = float(val)
 
+             if val >= 50:
+                 return "background-color: #0b6623; color: white; font-weight: bold;"
+             elif val >= 35:
+                 return "background-color: #2e8b57; color: white; font-weight: bold;"
+             elif val >= 25:
+                 return "background-color: #d4ac0d; color: black; font-weight: bold;"
+             elif val >= 15:
+                 return "background-color: #d97706; color: white; font-weight: bold;"
+             else:
+                 return "background-color: #9b1c1c; color: white; font-weight: bold;"
+         except:
+             return ""
     styled_td = (
        td_match[td_match_display]
        .style
@@ -477,7 +492,12 @@ try:
           color_td_match,
           subset=["TD_Match"]
       )
-      .format({
+      .map(
+          color_rz_share,
+          subset=["RZ_Share"]
+    )
+        .format({
+          
           "TD_Match": "{:.1f}",
           "RZ_Share": "{:.1f}",
           "I5_Opp_Allowed": "{:.0f}",
