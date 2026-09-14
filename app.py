@@ -135,11 +135,6 @@ try:
         how="left"
     )
 
-    # Keep TD-relevant offensive positions, including QBs
-    board = board[
-        board["Position"].isin(["QB", "RB", "WR", "TE"])
-    ].copy()
-
     
   
 
