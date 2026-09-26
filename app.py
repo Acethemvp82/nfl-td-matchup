@@ -441,7 +441,37 @@ try:
     schedule = load_schedule()
 
     # Use the week after the latest completed PBP week
-    next_week = current_week 
+    # Automatically determine the active NFL week
+    now = pd.Timestamp.now(tz="US/Eastern")
+
+   reg_schedule = schedule[
+    schedule["game_type"] == "REG"
+    ].copy()
+
+    reg_schedule["game_date"] = pd.to_datetime(
+    reg_schedule["gameday"]
+    ).dt.date
+
+    today = now.date()
+
+    active_games = reg_schedule[
+        reg_schedule["gameday"].notna()
+    ].copy()
+
+    # Stay on the current PBP week while that week's schedule is active.
+    # Advance only after its games are finished.
+    current_week_games = active_games[
+        active_games["week"] == current_week
+    ]
+
+    week_end = pd.to_datetime(
+        current_week_games["gameday"]
+    ).max().date()
+
+    if today > week_end:
+        next_week = current_week + 1
+    else:
+        next_week = current_week 
 
     next_games = schedule[
         (schedule["game_type"] == "REG") &
