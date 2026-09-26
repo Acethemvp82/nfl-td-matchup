@@ -442,7 +442,7 @@ try:
 
     # Use the week after the latest completed PBP week
     # Automatically determine the active NFL week
-    now = pd.Timestamp.now(tz="US/Eastern")
+    now = pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=4)
     
     reg_schedule = schedule[
         schedule["game_type"] == "REG"
