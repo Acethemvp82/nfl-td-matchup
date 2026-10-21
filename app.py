@@ -829,6 +829,99 @@ try:
     )
   
 
+
+    # -----------------------------
+    # TD RESULTS TRACKER
+    # -----------------------------
+    st.divider()
+    st.subheader("📈 TD Results Tracking")
+    st.caption("Save a pregame snapshot as CSV, then upload it after games finish to score the original predictions. Snapshots are not automatically stored on Streamlit Community Cloud.")
+
+    # The selected slate is already represented by next_games.
+    snapshot_games = next_games[["game_id", "gameday", "gametime", "home_team", "away_team"]].copy()
+    snapshot_games["kickoff_et"] = pd.to_datetime(
+        snapshot_games["gameday"].astype(str) + " " + snapshot_games["gametime"].astype(str),
+        errors="coerce"
+    ).dt.tz_localize("America/New_York", ambiguous="NaT", nonexistent="NaT")
+    now_et = pd.Timestamp.now(tz="America/New_York")
+    future_games = snapshot_games.loc[snapshot_games["kickoff_et"] > now_et].copy()
+    future_team_games = pd.concat([
+        future_games[["game_id", "home_team"]].rename(columns={"home_team": "Team"}),
+        future_games[["game_id", "away_team"]].rename(columns={"away_team": "Team"})
+    ], ignore_index=True)
+    snapshot_cols = ["game_id", "Player_ID", "Player", "Team", "Opp", "Position",
+                     "TD_Rank", "Team_Rank", "TD_Match", "RZ_Share", "Bet_Tier"]
+    snapshot = td_match.merge(future_team_games, on="Team", how="inner")
+    snapshot = snapshot[snapshot_cols].copy()
+    snapshot.insert(0, "Snapshot_UTC", pd.Timestamp.now(tz="UTC").isoformat())
+    snapshot.insert(1, "Season", 2026)
+    snapshot.insert(2, "Week", next_week)
+
+    if snapshot.empty:
+        st.info("No unstarted games in this slate. Select an upcoming slate to save pregame rankings.")
+    else:
+        st.download_button(
+            "💾 Save pregame TD rankings (CSV)",
+            data=snapshot.to_csv(index=False).encode("utf-8"),
+            file_name=f"nfl_td_pregame_week_{next_week}_{slate.lower().replace(' ', '_')}.csv",
+            mime="text/csv",
+            help="Save before kickoff. Keep this file to evaluate predictions after games."
+        )
+
+    uploaded = st.file_uploader("Upload a saved pregame snapshot to check results", type=["csv"], key="td_results_csv")
+    if uploaded is not None:
+        historical = pd.read_csv(uploaded, dtype={"Player_ID": str, "game_id": str})
+        required = set(snapshot_cols)
+        if not required.issubset(historical.columns):
+            st.error("This CSV is missing required pregame tracker columns.")
+        else:
+            # Count unique scoring plays per player and game, avoiding duplicate PBP rows.
+            rushing_scores = rush.loc[rush["Rush_TD"].eq(1),
+                ["game_id", "play_id", "rusher_player_id"]].rename(
+                columns={"rusher_player_id": "Player_ID"})
+            receiving_scores = targets.loc[targets["Rec_TD"].eq(1),
+                ["game_id", "play_id", "receiver_player_id"]].rename(
+                columns={"receiver_player_id": "Player_ID"})
+            scores = pd.concat([rushing_scores, receiving_scores], ignore_index=True)
+            scores = scores.drop_duplicates(["game_id", "play_id", "Player_ID"])
+            scores["game_id"] = scores["game_id"].astype(str)
+            scores["Player_ID"] = scores["Player_ID"].astype(str)
+            td_counts = scores.groupby(["game_id", "Player_ID"]).size().rename("Actual_TDs").reset_index()
+
+            # Only grade completed games present in PBP. Future/in-progress games stay pending.
+            completed_ids = set(schedule.loc[
+                schedule["result"].notna() & schedule["result"].astype(str).ne(""),
+                "game_id"
+            ].astype(str))
+            historical["game_id"] = historical["game_id"].astype(str)
+            historical["Player_ID"] = historical["Player_ID"].astype(str)
+            results = historical.merge(td_counts, on=["game_id", "Player_ID"], how="left")
+            results["Status"] = results["game_id"].apply(
+                lambda g: "Final" if g in completed_ids else "Pending"
+            )
+            results["Actual_TDs"] = results["Actual_TDs"].fillna(0).astype(int)
+            results["Scored_TD"] = results["Actual_TDs"].gt(0)
+            results.loc[results["Status"] != "Final", "Scored_TD"] = pd.NA
+            graded = results[results["Status"] == "Final"].copy()
+            if graded.empty:
+                st.info("No completed games from this snapshot are available in the loaded play-by-play yet.")
+            else:
+                by_tier = graded.groupby("Bet_Tier", dropna=False).agg(
+                    Picks=("Player_ID", "size"),
+                    Scorers=("Scored_TD", "sum")
+                ).reset_index()
+                by_tier["Hit_Rate"] = (100 * by_tier["Scorers"] / by_tier["Picks"]).round(1)
+                st.markdown("**Completed-game results by bet tier**")
+                st.dataframe(by_tier, hide_index=True, use_container_width=True)
+            st.markdown("**Pregame rankings vs. actual touchdowns**")
+            st.dataframe(
+                results[["Status", "Player", "Team", "Opp", "TD_Rank", "Team_Rank",
+                         "TD_Match", "RZ_Share", "Bet_Tier", "Actual_TDs", "Scored_TD"]],
+                hide_index=True, use_container_width=True
+            )
+            st.download_button("Download scored results", results.to_csv(index=False).encode("utf-8"),
+                               file_name="nfl_td_results.csv", mime="text/csv")
+
 except Exception as e:
     st.error("NFL TD opportunity calculation failed.")
     st.exception(e) 
