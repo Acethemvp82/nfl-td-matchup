@@ -578,6 +578,28 @@ try:
         100 * td_match["Games_Played"] / (td_match["Games_Played"] + 5)
     ).round(0).astype(int)
 
+    # Position-specific opportunity score. Keep the existing model's
+    # scoring scale while emphasizing each position's scoring path.
+    td_match["Rush_Path"] = (
+        td_match["I10_Rush"] / td_match["Games_Played"]
+    ).clip(0, 2) / 2 * 25 + (
+        td_match["I5_Rush"] / td_match["Games_Played"]
+    ).clip(0, 1) * 35 + (
+        td_match["GL_Carries"] / td_match["Games_Played"]
+    ).clip(0, 0.6) / 0.6 * 40
+    td_match["Rec_Path"] = (
+        td_match["RZ_Tgt"] / td_match["Games_Played"]
+    ).clip(0, 2) / 2 * 30 + (
+        td_match["I10_Tgt"] / td_match["Games_Played"]
+    ).clip(0, 1.2) / 1.2 * 30 + (
+        td_match["I5_Tgt"] / td_match["Games_Played"]
+    ).clip(0, 0.7) / 0.7 * 40
+    # Smooth position paths for players with limited observed games.
+    for col in ["Rush_Path", "Rec_Path"]:
+        prior = td_match.groupby("Position")[col].transform("median").fillna(0)
+        weight = td_match["Games_Played"] / (td_match["Games_Played"] + 5)
+        td_match[col + "_Adj"] = weight * td_match[col] + (1 - weight) * prior
+
     td_match["Offense_Score"] = (
         td_match["RZ_Share"].clip(0, 70) / 70 * 20
         + td_match["I10_Opp_PG_Adj"].clip(0, 2) / 2 * 10
@@ -585,6 +607,24 @@ try:
         + td_match["GL_Opp_PG_Adj"].clip(0, 0.6) / 0.6 * 20
         + td_match["RZ_Opp_PG_Adj"].clip(0, 3) / 3 * 30
    )
+
+    # Combine position pathways with the original opportunity score.
+    # WR/TE are evaluated primarily on receiving chances; RB on rushing,
+    # and QB on rushing while preserving the existing QB bonus.
+    position_mix = {"RB": (0.70, 0.30), "WR": (0.10, 0.90),
+                    "TE": (0.10, 0.90), "QB": (0.85, 0.15)}
+    rush_weight = td_match["Position"].map(
+        {pos: weights[0] for pos, weights in position_mix.items()}
+    ).fillna(0.5)
+    rec_weight = 1 - rush_weight
+    td_match["Position_Score"] = (
+        rush_weight * td_match["Rush_Path_Adj"]
+        + rec_weight * td_match["Rec_Path_Adj"]
+    )
+    td_match["Offense_Score"] = (
+        td_match["Offense_Score"] * 0.65
+        + td_match["Position_Score"] * 0.35
+    )
 
     # Defensive vulnerability component
     td_match["Defense_Score"] = (
