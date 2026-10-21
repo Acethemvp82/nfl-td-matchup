@@ -565,12 +565,25 @@ try:
     # FIRST TD MATCH SCORE
     # -----------------------------
     # Offensive opportunity component
+    # Shrink low-sample per-game rates toward the position group's
+    # observed baseline; five games provides approximately 50% weight.
+    rate_cols = ["RZ_Opp_PG", "I10_Opp_PG", "I5_Opp_PG", "GL_Opp_PG"]
+    for col in rate_cols:
+        baseline = td_match.groupby("Position")[col].transform("median").fillna(td_match[col].median())
+        reliability = td_match["Games_Played"] / (td_match["Games_Played"] + 5)
+        td_match[col + "_Adj"] = (
+            reliability * td_match[col] + (1 - reliability) * baseline
+        )
+    td_match["Sample_Confidence"] = (
+        100 * td_match["Games_Played"] / (td_match["Games_Played"] + 5)
+    ).round(0).astype(int)
+
     td_match["Offense_Score"] = (
         td_match["RZ_Share"].clip(0, 70) / 70 * 20
-        + td_match["I10_Opp_PG"].clip(0, 2) / 2 * 10
-        + td_match["I5_Opp_PG"].clip(0, 1) / 1 * 20
-        + td_match["GL_Opp_PG"].clip(0, 0.6) / 0.6 * 20
-        + td_match["RZ_Opp_PG"].clip(0, 3) / 3 * 30
+        + td_match["I10_Opp_PG_Adj"].clip(0, 2) / 2 * 10
+        + td_match["I5_Opp_PG_Adj"].clip(0, 1) / 1 * 20
+        + td_match["GL_Opp_PG_Adj"].clip(0, 0.6) / 0.6 * 20
+        + td_match["RZ_Opp_PG_Adj"].clip(0, 3) / 3 * 30
    )
 
     # Defensive vulnerability component
@@ -613,7 +626,7 @@ try:
     )
     td_match["TD_Grade"] = pd.cut(
     td_match["TD_Match"],
-    bins=[-float("inf"), 40, 50, 60, 70, float("inf")],
+    bins=[-float("inf"), 45, 60, 75, 90, float("inf")],
     labels=[
         "❌ WEAK",
         "⚠️ MODERATE",
@@ -644,16 +657,16 @@ try:
             or row["QB_Rush_Threat"] == "🔥 MEDIUM"
         )
 
-        if match >= 70 and high_path:
+        if match >= 90 and high_path and row["Games_Played"] >= 3:
             return "💎 TOP PLAY"
 
-        elif match >= 60 and (high_path or medium_path):
+        elif match >= 75 and (high_path or medium_path) and row["Games_Played"] >= 2:
             return "🔥 STRONG BET"
 
-        elif match >= 50 and high_path:
+        elif match >= 60 and high_path:
             return "✅ PLAYABLE"
 
-        elif match >= 45 and (high_path or medium_path):
+        elif match >= 50 and (high_path or medium_path):
             return "👀 LEAN"
 
         else:
@@ -670,6 +683,7 @@ try:
         "TD_Match",
         "RZ_Share",
         "Games_Played",
+        "Sample_Confidence",
         "RZ_Opp_PG",
         "I5_Opp_PG",
         "TD_Grade",
