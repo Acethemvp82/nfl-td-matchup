@@ -831,149 +831,86 @@ try:
 
 
     # -----------------------------
-    # AUTOMATIC TD RESULTS TRACKER
+    # LIVE TD RESULTS TRACKER
     # -----------------------------
     st.divider()
-    st.subheader("📈 TD Results Tracking")
-    st.caption("Pregame snapshots are automatically saved to a private GitHub repository when configured. Completed games are graded from play-by-play.")
+    st.subheader("🏈 Live TD Results")
+    st.caption("Automatically compares NFL play-by-play touchdowns with the current TD Match ratings. Rankings shown are live model ratings, not archived pregame snapshots.")
 
-    import requests
-    import base64
-    import io
-
-    # A dedicated PRIVATE repository is recommended for snapshot history.
-    # Add TD_TRACKER_TOKEN and TD_TRACKER_REPO to Streamlit app secrets.
-    tracker_token = st.secrets.get("TD_TRACKER_TOKEN", "")
-    tracker_repo = st.secrets.get("TD_TRACKER_REPO", "")
-    tracker_ready = bool(tracker_token and tracker_repo)
-    tracker_headers = {
-        "Authorization": f"Bearer {tracker_token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-
-    def tracker_get(path):
-        url = f"https://api.github.com/repos/{tracker_repo}/contents/{path}"
-        response = requests.get(url, headers=tracker_headers, timeout=15)
-        if response.status_code == 404:
-            return None, None
-        response.raise_for_status()
-        payload = response.json()
-        raw = base64.b64decode(payload["content"]).decode("utf-8")
-        return pd.read_csv(io.StringIO(raw), dtype={"Player_ID": str, "game_id": str}), payload["sha"]
-
-    def tracker_create(path, data):
-        url = f"https://api.github.com/repos/{tracker_repo}/contents/{path}"
-        payload = {
-            "message": f"Save NFL pregame TD predictions: {path}",
-            "content": base64.b64encode(data.to_csv(index=False).encode()).decode(),
-        }
-        response = requests.put(url, headers=tracker_headers, json=payload, timeout=20)
-        if response.status_code == 422:  # already saved by another session
-            return False
-        response.raise_for_status()
-        return True
-
-    # Use schedule kickoff in Eastern time and do not snapshot games already started.
-    game_schedule = next_games[["game_id", "gameday", "gametime", "home_team", "away_team"]].copy()
-    game_schedule["Kickoff_ET"] = pd.to_datetime(
-        game_schedule["gameday"].astype(str) + " " + game_schedule["gametime"].astype(str),
-        errors="coerce"
-    ).dt.tz_localize("America/New_York", ambiguous="NaT", nonexistent="NaT")
-    now_et = pd.Timestamp.now(tz="America/New_York")
-
-    if not tracker_ready:
-        st.warning("Automatic history needs persistent storage. Configure TD_TRACKER_TOKEN and TD_TRACKER_REPO in Streamlit secrets to enable saving pregame predictions.")
+    # Use the selected week, independent of slate filter, so completed
+    # Thursday/Sunday games remain visible later in the week.
+    tracker_games = reg_schedule.loc[reg_schedule["week"] == next_week].copy()
+    if tracker_games.empty:
+        st.info("No regular-season games found for the selected week.")
     else:
-        try:
-            # GitHub directory listing provides snapshots saved in prior sessions.
-            listing = requests.get(
-                f"https://api.github.com/repos/{tracker_repo}/contents/td_snapshots",
-                headers=tracker_headers, timeout=15
+        tracker_ids = set(tracker_games["game_id"].astype(str))
+        live_pbp = pbp.loc[pbp["game_id"].astype(str).isin(tracker_ids)].copy()
+        # TDs credited to rushing and receiving players only. Filter out
+        # defensive returns and two-point conversions.
+        live_pbp = live_pbp.loc[
+            live_pbp["play_id"].notna() &
+            (live_pbp["two_point_attempt"] != 1)
+        ].copy()
+        rushing_td = live_pbp.loc[
+            (live_pbp["rush_attempt"] == 1) &
+            (live_pbp["rush_touchdown"] == 1) &
+            live_pbp["rusher_player_id"].notna(),
+            ["game_id", "play_id", "posteam", "rusher_player_id", "rusher_player_name"]
+        ].rename(columns={
+            "posteam": "Team", "rusher_player_id": "Player_ID",
+            "rusher_player_name": "Player"
+        })
+        rushing_td["TD_Type"] = "Rush"
+        receiving_td = live_pbp.loc[
+            (live_pbp["pass_attempt"] == 1) &
+            (live_pbp["pass_touchdown"] == 1) &
+            live_pbp["receiver_player_id"].notna(),
+            ["game_id", "play_id", "posteam", "receiver_player_id", "receiver_player_name"]
+        ].rename(columns={
+            "posteam": "Team", "receiver_player_id": "Player_ID",
+            "receiver_player_name": "Player"
+        })
+        receiving_td["TD_Type"] = "Receiving"
+        events = pd.concat([rushing_td, receiving_td], ignore_index=True)
+        events = events.drop_duplicates(["game_id", "play_id", "Player_ID", "TD_Type"])
+        events["Player_ID"] = events["Player_ID"].astype(str)
+
+        if events.empty:
+            st.info("No rushing or receiving touchdowns recorded in the available play-by-play for this week yet.")
+        else:
+            td_totals = events.groupby(["game_id", "Player_ID", "Team", "Player"], as_index=False).agg(
+                Actual_TDs=("play_id", "nunique"),
+                TD_Types=("TD_Type", lambda x: ", ".join(sorted(set(x))))
             )
-            if listing.status_code == 404:
-                saved_paths = []
-            else:
-                listing.raise_for_status()
-                saved_paths = [item["path"] for item in listing.json() if item["name"].endswith(".csv")]
-
-            # Save one immutable snapshot per game, once, before kickoff.
-            for _, game in game_schedule.iterrows():
-                gid = str(game["game_id"])
-                path = f"td_snapshots/{gid}.csv"
-                if path in saved_paths or pd.isna(game["Kickoff_ET"]) or game["Kickoff_ET"] <= now_et:
-                    continue
-                teams = [game["home_team"], game["away_team"]]
-                snap = td_match.loc[td_match["Team"].isin(teams),
-                    ["Player_ID", "Player", "Team", "Opp", "Position", "TD_Rank",
-                     "Team_Rank", "TD_Match", "RZ_Share", "Bet_Tier"]].copy()
-                if snap.empty:
-                    continue
-                snap.insert(0, "game_id", gid)
-                snap.insert(1, "Season", 2026)
-                snap.insert(2, "Week", next_week)
-                snap.insert(3, "Snapshot_UTC", pd.Timestamp.now(tz="UTC").isoformat())
-                if tracker_create(path, snap):
-                    saved_paths.append(path)
-
-            if not saved_paths:
-                st.info("No pregame snapshots saved yet. Upcoming games will be captured when the app runs before kickoff.")
-            else:
-                snapshots = []
-                for path in saved_paths:
-                    frame, _ = tracker_get(path)
-                    if frame is not None:
-                        snapshots.append(frame)
-                history = pd.concat(snapshots, ignore_index=True) if snapshots else pd.DataFrame()
-
-                if not history.empty:
-                    # Only grade games with a final score recorded in the schedule.
-                    finished = schedule.loc[
-                        schedule["result"].notna(), "game_id"
-                    ].astype(str)
-                    completed = set(finished)
-                    rush_scores = rush.loc[rush["Rush_TD"].eq(1),
-                        ["game_id", "play_id", "rusher_player_id"]].rename(
-                        columns={"rusher_player_id": "Player_ID"})
-                    rec_scores = targets.loc[targets["Rec_TD"].eq(1),
-                        ["game_id", "play_id", "receiver_player_id"]].rename(
-                        columns={"receiver_player_id": "Player_ID"})
-                    scores = pd.concat([rush_scores, rec_scores], ignore_index=True)
-                    scores = scores.drop_duplicates(["game_id", "play_id", "Player_ID"])
-                    scores["game_id"] = scores["game_id"].astype(str)
-                    scores["Player_ID"] = scores["Player_ID"].astype(str)
-                    td_counts = scores.groupby(["game_id", "Player_ID"]).size().rename("Actual_TDs").reset_index()
-
-                    history["game_id"] = history["game_id"].astype(str)
-                    history["Player_ID"] = history["Player_ID"].astype(str)
-                    history = history.merge(td_counts, on=["game_id", "Player_ID"], how="left")
-                    history["Status"] = history["game_id"].map(
-                        lambda gid: "Final" if gid in completed else "Pending"
-                    )
-                    history["Actual_TDs"] = history["Actual_TDs"].fillna(0).astype(int)
-                    history["Scored_TD"] = history["Actual_TDs"].gt(0)
-                    history.loc[history["Status"] != "Final", "Scored_TD"] = pd.NA
-                    weeks = sorted(history["Week"].dropna().unique().tolist())
-                    week_filter = st.selectbox("Results week", ["All Weeks"] + weeks)
-                    if week_filter != "All Weeks":
-                        history = history.loc[history["Week"] == week_filter].copy()
-                    graded = history.loc[history["Status"] == "Final"].copy()
-                    if not graded.empty:
-                        tier_stats = graded.groupby("Bet_Tier").agg(
-                            Picks=("Player_ID", "size"), Scorers=("Scored_TD", "sum")
-                        ).reset_index()
-                        tier_stats["Hit_Rate_%"] = (100 * tier_stats["Scorers"] / tier_stats["Picks"]).round(1)
-                        st.markdown("**Results by bet tier**")
-                        st.dataframe(tier_stats, hide_index=True, use_container_width=True)
-                    st.markdown("**Pregame predictions vs actual touchdowns**")
-                    st.dataframe(history[[
-                        "Week", "Status", "Player", "Team", "Position", "TD_Rank",
-                        "Team_Rank", "TD_Match", "RZ_Share", "Bet_Tier",
-                        "Actual_TDs", "Scored_TD"
-                    ]], hide_index=True, use_container_width=True)
-        except Exception as tracker_error:
-            st.error("Automatic TD tracking could not access persistent history.")
-            st.exception(tracker_error)
+            team_games = pd.concat([
+                tracker_games[["game_id", "home_team", "away_team"]].rename(
+                    columns={"home_team": "Team", "away_team": "Opp"}),
+                tracker_games[["game_id", "away_team", "home_team"]].rename(
+                    columns={"away_team": "Team", "home_team": "Opp"})
+            ], ignore_index=True)
+            td_totals = td_totals.merge(team_games, on=["game_id", "Team"], how="left")
+            # Current TD Match scores are available for the chosen slate;
+            # use only matching team and player IDs, avoiding name collisions.
+            current_ratings = td_match[[
+                "Player_ID", "Team", "TD_Rank", "Team_Rank",
+                "TD_Match", "RZ_Share", "Bet_Tier", "Position"
+            ]].copy()
+            current_ratings["Player_ID"] = current_ratings["Player_ID"].astype(str)
+            results = td_totals.merge(
+                current_ratings.drop_duplicates(["Player_ID", "Team"]),
+                on=["Player_ID", "Team"], how="left"
+            )
+            results["Model_Status"] = results["TD_Match"].notna().map({
+                True: "Current rating", False: "Not on selected slate"
+            })
+            results = results.sort_values(["Actual_TDs", "Team"], ascending=[False, True])
+            st.metric("Recorded offensive TDs", int(results["Actual_TDs"].sum()))
+            st.dataframe(results[[
+                "Player", "Team", "Opp", "Actual_TDs", "TD_Types",
+                "TD_Rank", "Team_Rank", "TD_Match", "RZ_Share",
+                "Bet_Tier", "Model_Status"
+            ]], hide_index=True, use_container_width=True)
+            st.caption("Touchdown events refresh when nflreadpy play-by-play data updates (cached for up to one hour). Results do not include passing TD credit to quarterbacks.")
 
 except Exception as e:
     st.error("NFL TD opportunity calculation failed.")
