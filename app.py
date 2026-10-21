@@ -536,6 +536,9 @@ try:
         how="inner"
     )
 
+    # Restrict TD Match to eligible offensive skill positions.
+    td_match = td_match[td_match["Position"].isin(["QB", "RB", "WR", "TE"])].copy()
+
     # Add opponent defensive vulnerability
     td_match = td_match.merge(
         defense_board,
@@ -664,6 +667,7 @@ try:
         "TD_Rank",
         range(1, len(td_match) + 1)
     )
+    td_match.insert(1, "Team_Rank", td_match.groupby("Team").cumcount() + 1)
     td_match["TD_Grade"] = pd.cut(
     td_match["TD_Match"],
     bins=[-float("inf"), 45, 60, 75, 90, float("inf")],
@@ -716,6 +720,7 @@ try:
     td_match["Bet_Tier"] = td_match.apply(td_bet_tier, axis=1)
     td_match_display = [
         "TD_Rank",
+        "Team_Rank",
         "Player",
         "Team",
         "Opp",
