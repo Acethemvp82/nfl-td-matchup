@@ -473,7 +473,7 @@ try:
     else:
         next_week = current_week
 
-        next_games = schedule[
+    next_games = schedule[
         (schedule["game_type"] == "REG") &
         (schedule["week"] == next_week)
     ].copy()
