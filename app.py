@@ -574,7 +574,7 @@ try:
         td_match[col + "_Adj"] = (
             reliability * td_match[col] + (1 - reliability) * baseline
         )
-    td_match["Sample_Confidence"] = (
+    td_match["Data_Weight"] = (
         100 * td_match["Games_Played"] / (td_match["Games_Played"] + 5)
     ).round(0).astype(int)
 
@@ -683,7 +683,7 @@ try:
         "TD_Match",
         "RZ_Share",
         "Games_Played",
-        "Sample_Confidence",
+        "Data_Weight",
         "RZ_Opp_PG",
         "I5_Opp_PG",
         "TD_Grade",
