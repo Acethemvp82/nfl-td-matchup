@@ -546,23 +546,39 @@ try:
     )
 
     # -----------------------------
+    # PER-GAME OPPORTUNITY NORMALIZATION
+    # Player games with an actual rush or target
+    appearances = pd.concat([
+        rush[["rusher_player_id", "posteam", "game_id"]].rename(columns={"rusher_player_id":"Player_ID","posteam":"Team"}),
+        targets[["receiver_player_id", "posteam", "game_id"]].rename(columns={"receiver_player_id":"Player_ID","posteam":"Team"})
+    ], ignore_index=True).dropna(subset=["Player_ID", "game_id"])
+    player_games = appearances.groupby(["Player_ID","Team"])["game_id"].nunique().rename("Games_Played").reset_index()
+    td_match = td_match.merge(player_games, on=["Player_ID","Team"], how="left")
+    td_match["Games_Played"] = td_match["Games_Played"].fillna(1).clip(lower=1)
+    defense_games = pbp[["defteam","game_id"]].dropna().drop_duplicates().groupby("defteam")["game_id"].nunique()
+    td_match["Defense_Games"] = td_match["Opp"].map(defense_games).fillna(1).clip(lower=1)
+    for col in ["RZ_Opp","I10_Opp","I5_Opp","GL_Opp"]:
+        td_match[col+"_PG"] = td_match[col] / td_match["Games_Played"]
+    for col in ["RZ_Opp_Allowed","I10_Opp_Allowed","I5_Opp_Allowed","TD_Allowed"]:
+        td_match[col+"_PG"] = td_match[col].fillna(0) / td_match["Defense_Games"]
+
     # FIRST TD MATCH SCORE
     # -----------------------------
     # Offensive opportunity component
     td_match["Offense_Score"] = (
         td_match["RZ_Share"].clip(0, 70) / 70 * 20
-        + td_match["I10_Opp"].clip(0, 6) / 6 * 10
-        + td_match["I5_Opp"].clip(0, 4) / 4 * 20
-        + td_match["GL_Opp"].clip(0, 4) / 4 * 20
-        + td_match["RZ_Opp"].clip(0, 8) / 8 * 30
+        + td_match["I10_Opp_PG"].clip(0, 2) / 2 * 10
+        + td_match["I5_Opp_PG"].clip(0, 1) / 1 * 20
+        + td_match["GL_Opp_PG"].clip(0, 0.6) / 0.6 * 20
+        + td_match["RZ_Opp_PG"].clip(0, 3) / 3 * 30
    )
 
     # Defensive vulnerability component
     td_match["Defense_Score"] = (
-        td_match["I5_Opp_Allowed"].clip(0, 6) / 6 * 40
-        + td_match["I10_Opp_Allowed"].clip(0, 10) / 10 * 30
-        + td_match["RZ_Opp_Allowed"].clip(0, 16) / 16 * 20
-        + td_match["TD_Allowed"].clip(0, 4) / 4 * 10
+        td_match["I5_Opp_Allowed_PG"].clip(0, 2) / 2 * 40
+        + td_match["I10_Opp_Allowed_PG"].clip(0, 3) / 3 * 30
+        + td_match["RZ_Opp_Allowed_PG"].clip(0, 5) / 5 * 20
+        + td_match["TD_Allowed_PG"].clip(0, 3) / 3 * 10
     )
 
     # 65% player opportunity / 35% opponent vulnerability
@@ -584,7 +600,7 @@ try:
 
     td_match["TD_Match"] = (
         td_match["TD_Match"] + td_match["QB_Bonus"]
-    ).round(1)
+    ).clip(0, 100).round(1)
     td_match = td_match.sort_values(
         "TD_Match",
         ascending=False
@@ -653,6 +669,9 @@ try:
         "Position",
         "TD_Match",
         "RZ_Share",
+        "Games_Played",
+        "RZ_Opp_PG",
+        "I5_Opp_PG",
         "TD_Grade",
         "Rush_TD_Signal",
         "Rec_TD_Signal",
@@ -736,6 +755,8 @@ try:
           
           "TD_Match": "{:.1f}",
           "RZ_Share": "{:.1f}",
+          "RZ_Opp_PG": "{:.2f}",
+          "I5_Opp_PG": "{:.2f}",
           "I5_Opp_Allowed": "{:.0f}",
           "I10_Opp_Allowed": "{:.0f}",
           "TD_Allowed": "{:.0f}"
