@@ -211,13 +211,13 @@ try:
             or row["I5_Rush"] >= 2
             or row["I10_Rush"] >= 3
         ):
-            return "🔥🔥 HIGH"
+            return "HIGH"
         elif (
             row["I5_Rush"] >= 1
             or row["I10_Rush"] >= 1
             or row["RZ_Rush"] >= 2
         ):
-            return "🔥 MEDIUM"
+            return "MEDIUM"
         else:
             return "LOW"
 
@@ -227,13 +227,13 @@ try:
             or row["I5_Tgt"] >= 2
             or row["I10_Tgt"] >= 3
         ):
-            return "🔥🔥 HIGH"
+            return "HIGH"
         elif (
             row["I5_Tgt"] >= 1
             or row["I10_Tgt"] >= 1
             or row["RZ_Tgt"] >= 2
         ):
-            return "🔥 MEDIUM"
+            return "MEDIUM"
         else:
             return "LOW"
 
@@ -628,11 +628,11 @@ try:
     td_match["TD_Match"],
     bins=[-float("inf"), 45, 60, 75, 90, float("inf")],
     labels=[
-        "❌ WEAK",
-        "⚠️ MODERATE",
-        "🔥 GOOD",
-        "🔥🔥 STRONG",
-        "🔥🔥🔥 ELITE"
+        "WEAK",
+        "MODERATE",
+        "GOOD",
+        "STRONG",
+        "ELITE"
     ],
     right=False
 ) 
@@ -646,14 +646,14 @@ try:
         rec_sig = row["Rec_TD_Signal"]
 
         high_path = (
-            rush_sig == "🔥🔥 HIGH"
-            or rec_sig == "🔥🔥 HIGH"
+            rush_sig == "HIGH"
+            or rec_sig == "HIGH"
             or row["QB_Rush_Threat"] == "🔥🔥 HIGH"
         )
 
         medium_path = (
-            rush_sig == "🔥 MEDIUM"
-            or rec_sig == "🔥 MEDIUM"
+            rush_sig == "MEDIUM"
+            or rec_sig == "MEDIUM"
             or row["QB_Rush_Threat"] == "🔥 MEDIUM"
         )
 
@@ -661,7 +661,7 @@ try:
             return "💎 TOP PLAY"
 
         elif match >= 75 and (high_path or medium_path) and row["Games_Played"] >= 2:
-            return "🔥 STRONG BET"
+            return "STRONG BET"
 
         elif match >= 60 and high_path:
             return "✅ PLAYABLE"
