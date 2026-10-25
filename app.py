@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import nflreadpy as nfl
+import requests
 
 # -----------------------------
 # PAGE SETUP
@@ -822,86 +823,118 @@ try:
 
 
     # -----------------------------
-    # LIVE TD RESULTS TRACKER
+    # LIVE TD RESULTS TRACKER (ESPN game boxscores, independent of delayed PBP)
     # -----------------------------
     st.divider()
     st.subheader("🏈 Live TD Results")
-    st.caption("Automatically compares NFL play-by-play touchdowns with the current TD Match ratings. Rankings shown are live model ratings, not archived pregame snapshots.")
+    st.caption("Live game boxscores from ESPN; TD Match ratings are current, not saved pregame values.")
 
-    # Use the selected week, independent of slate filter, so completed
-    # Thursday/Sunday games remain visible later in the week.
-    tracker_games = reg_schedule.loc[reg_schedule["week"] == next_week].copy()
-    if tracker_games.empty:
-        st.info("No regular-season games found for the selected week.")
-    else:
-        tracker_ids = set(tracker_games["game_id"].astype(str))
-        live_pbp = pbp.loc[pbp["game_id"].astype(str).isin(tracker_ids)].copy()
-        # TDs credited to rushing and receiving players only. Filter out
-        # defensive returns and two-point conversions.
-        live_pbp = live_pbp.loc[
-            live_pbp["play_id"].notna() &
-            (live_pbp["two_point_attempt"] != 1)
-        ].copy()
-        rushing_td = live_pbp.loc[
-            (live_pbp["rush_attempt"] == 1) &
-            (live_pbp["rush_touchdown"] == 1) &
-            live_pbp["rusher_player_id"].notna(),
-            ["game_id", "play_id", "posteam", "rusher_player_id", "rusher_player_name"]
-        ].rename(columns={
-            "posteam": "Team", "rusher_player_id": "Player_ID",
-            "rusher_player_name": "Player"
-        })
-        rushing_td["TD_Type"] = "Rush"
-        receiving_td = live_pbp.loc[
-            (live_pbp["pass_attempt"] == 1) &
-            (live_pbp["pass_touchdown"] == 1) &
-            live_pbp["receiver_player_id"].notna(),
-            ["game_id", "play_id", "posteam", "receiver_player_id", "receiver_player_name"]
-        ].rename(columns={
-            "posteam": "Team", "receiver_player_id": "Player_ID",
-            "receiver_player_name": "Player"
-        })
-        receiving_td["TD_Type"] = "Receiving"
-        events = pd.concat([rushing_td, receiving_td], ignore_index=True)
-        events = events.drop_duplicates(["game_id", "play_id", "Player_ID", "TD_Type"])
-        events["Player_ID"] = events["Player_ID"].astype(str)
+    @st.cache_data(ttl=60, show_spinner=False)
+    def fetch_live_td_results(season, week):
+        base = "https://site.api.espn.com/apis/site/v2/sports/football/nfl"
+        session = requests.Session()
+        session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; TDMatch/1.0)"})
+        response = session.get(
+            base + "/scoreboard",
+            params={"season": season, "seasontype": 2, "week": week, "limit": 50},
+            timeout=12,
+        )
+        response.raise_for_status()
+        rows = []
+        games_seen = 0
+        for event in response.json().get("events", []):
+            competition = (event.get("competitions") or [{}])[0]
+            status = competition.get("status", {}).get("type", {})
+            if status.get("name") == "STATUS_SCHEDULED":
+                continue
+            games_seen += 1
+            try:
+                game_response = session.get(
+                    base + "/summary", params={"event": event["id"]}, timeout=12
+                )
+                game_response.raise_for_status()
+                boxscore = game_response.json().get("boxscore", {})
+                for team_entry in boxscore.get("players", []):
+                    team = team_entry.get("team", {}).get("abbreviation", "")
+                    for category in team_entry.get("statistics", []):
+                        cat = category.get("name", "").lower()
+                        if cat not in ("rushing", "receiving"):
+                            continue
+                        labels = [str(v).upper() for v in category.get("labels", [])]
+                        if "TD" not in labels:
+                            continue
+                        td_index = labels.index("TD")
+                        for athlete in category.get("athletes", []):
+                            stats = athlete.get("stats", [])
+                            if td_index >= len(stats):
+                                continue
+                            try:
+                                td_count = int(float(stats[td_index]))
+                            except (ValueError, TypeError):
+                                continue
+                            if td_count <= 0:
+                                continue
+                            player = athlete.get("athlete", {})
+                            rows.append({
+                                "Player": player.get("displayName", ""),
+                                "Team": team,
+                                "Actual_TDs": td_count,
+                                "TD_Type": "Rush" if cat == "rushing" else "Receiving",
+                                "ESPN_ID": str(player.get("id", "")),
+                            })
+            except (requests.RequestException, KeyError, ValueError):
+                continue
+        return rows, games_seen
 
-        if events.empty:
-            st.info("No offensive touchdowns in the available play-by-play for this week yet. Data may not have been published.")
+    try:
+        live_rows, live_games = fetch_live_td_results(2026, next_week)
+        if not live_rows:
+            st.info(
+                "No rushing or receiving touchdowns available from ESPN yet. "
+                "Games may not have started or the live feed may be delayed."
+            )
         else:
-            td_totals = events.groupby(["game_id", "Player_ID", "Team", "Player"], as_index=False).agg(
-                Actual_TDs=("play_id", "nunique"),
+            live_df = pd.DataFrame(live_rows)
+            # One row per scorer; rushing + receiving TDs both count.
+            live_df = live_df.groupby(["Player", "Team"], as_index=False).agg(
+                Actual_TDs=("Actual_TDs", "sum"),
                 TD_Types=("TD_Type", lambda x: ", ".join(sorted(set(x))))
             )
-            team_games = pd.concat([
-                tracker_games[["game_id", "home_team", "away_team"]].rename(
-                    columns={"home_team": "Team", "away_team": "Opp"}),
-                tracker_games[["game_id", "away_team", "home_team"]].rename(
-                    columns={"away_team": "Team", "home_team": "Opp"})
-            ], ignore_index=True)
-            td_totals = td_totals.merge(team_games, on=["game_id", "Team"], how="left")
-            # Ratings cover all games in the week, not just the selected slate.
-            # use only matching team and player IDs, avoiding name collisions.
-            current_ratings = tracker_ratings[[
-                "Player_ID", "Team", "TD_Rank", "Team_Rank",
-                "TD_Match", "RZ_Share", "Bet_Tier", "Position"
+            # ESPN and nflverse use different player identifiers. Match by
+            # normalized full name + team; never use name alone.
+            def normalized_name(name):
+                import re
+                name = str(name).lower()
+                name = re.sub(r"[^a-z0-9 ]", "", name)
+                return re.sub(r"\\s+", " ", name).strip()
+
+            ratings = tracker_ratings[[
+                "Player", "Team", "TD_Rank", "Team_Rank",
+                "TD_Match", "RZ_Share", "Bet_Tier"
             ]].copy()
-            current_ratings["Player_ID"] = current_ratings["Player_ID"].astype(str)
-            results = td_totals.merge(
-                current_ratings.drop_duplicates(["Player_ID", "Team"]),
-                on=["Player_ID", "Team"], how="left"
+            ratings["Join_Name"] = ratings["Player"].map(normalized_name)
+            live_df["Join_Name"] = live_df["Player"].map(normalized_name)
+            results = live_df.merge(
+                ratings.drop(columns=["Player"]).drop_duplicates(["Join_Name", "Team"]),
+                on=["Join_Name", "Team"], how="left"
             )
             results["Model_Status"] = results["TD_Match"].notna().map({
-                True: "Current rating", False: "No current-week rating"
+                True: "Current rating", False: "No matching rating"
             })
-            results = results.sort_values(["Actual_TDs", "Team"], ascending=[False, True])
+            results = results.sort_values(
+                ["Actual_TDs", "Team", "Player"], ascending=[False, True, True]
+            )
             st.metric("Recorded offensive TDs", int(results["Actual_TDs"].sum()))
             st.dataframe(results[[
-                "Player", "Team", "Opp", "Actual_TDs", "TD_Types",
-                "TD_Rank", "Team_Rank", "TD_Match", "RZ_Share",
-                "Bet_Tier", "Model_Status"
+                "Player", "Team", "Actual_TDs", "TD_Types", "TD_Rank",
+                "Team_Rank", "TD_Match", "RZ_Share", "Bet_Tier", "Model_Status"
             ]], hide_index=True, use_container_width=True)
-            st.caption("Touchdown events refresh when nflreadpy play-by-play data updates (cached for up to one hour). Results do not include passing TD credit to quarterbacks.")
+        st.caption(
+            f"ESPN games started/completed: {live_games}. Results refresh when the "
+            "app reruns, with a 60-second data cache. No manual upload needed."
+        )
+    except (requests.RequestException, ValueError, KeyError) as live_error:
+        st.warning(f"Live ESPN results temporarily unavailable: {live_error}")
 
 except Exception as e:
     st.error("NFL TD opportunity calculation failed.")
