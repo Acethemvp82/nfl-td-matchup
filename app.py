@@ -440,80 +440,25 @@ try:
 
     schedule = load_schedule()
 
-    # Use the week after the latest completed PBP week
-    # Automatically determine the active NFL week
-    now = pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=4)
-    
-    reg_schedule = schedule[
-        schedule["game_type"] == "REG"
-    ].copy()
-    
+    # Select the NFL week using scheduled game dates, not the latest
+    # play-by-play week (which can lag while games are being played).
+    now_et = pd.Timestamp.now(tz="America/New_York")
+    reg_schedule = schedule.loc[schedule["game_type"] == "REG"].copy()
     reg_schedule["game_date"] = pd.to_datetime(
-        reg_schedule["gameday"]
+        reg_schedule["gameday"], errors="coerce"
     ).dt.date
-    
-    today = now.date()
-    
-    active_games = reg_schedule[
-        reg_schedule["gameday"].notna()
-    ].copy()
-    
-    # Stay on the current PBP week while that week's schedule is active.
-    # Advance only after its games are finished.
-    current_week_games = active_games[
-        active_games["week"] == current_week
-    ]
-    
-    week_end = pd.to_datetime(
-        current_week_games["gameday"]
-    ).max().date()
-    
-    if today > week_end:
-        next_week = current_week + 1
-    else:
-        next_week = current_week
+    valid_games = reg_schedule.dropna(subset=["game_date"]).copy()
+    if valid_games.empty:
+        st.warning("NFL schedule dates are unavailable.")
+        st.stop()
 
-    next_games = schedule[
-        (schedule["game_type"] == "REG") &
-        (schedule["week"] == next_week)
-    ].copy()
-    # ------------------------------
-    # SLATE FILTER
-    # ------------------------------
-    next_games["Game_Hour"] = pd.to_datetime(
-        next_games["gametime"],
-        format="%H:%M",
-        errors="coerce"
-    ).dt.hour
-
-    if slate == "Thursday":
-        next_games = next_games[
-            next_games["weekday"] == "Thursday"
-        ].copy()
-
-    elif slate == "Sunday Early":
-        next_games = next_games[
-            (next_games["weekday"] == "Sunday") &
-            (next_games["Game_Hour"] < 16)
-        ].copy()
-
-    elif slate == "Sunday Late":
-        next_games = next_games[
-            (next_games["weekday"] == "Sunday") &
-            (next_games["Game_Hour"] >= 16) &
-            (next_games["Game_Hour"] < 20)
-        ].copy()
-
-    elif slate == "Sunday Night":
-        next_games = next_games[
-            (next_games["weekday"] == "Sunday") &
-            (next_games["Game_Hour"] >= 20)
-        ].copy()
-
-    elif slate == "Monday Night":
-        next_games = next_games[
-            next_games["weekday"] == "Monday"
-       ].copy()
+    week_dates = valid_games.groupby("week")["game_date"].agg(["min", "max"]).sort_index()
+    today = now_et.date()
+    # A week remains active through its last scheduled game. Between weeks,
+    # show the next scheduled week rather than guessing from PBP coverage.
+    active_weeks = week_dates.loc[week_dates["max"] >= today]
+    next_week = int(active_weeks.index[0]) if not active_weeks.empty else int(week_dates.index[-1])
+    next_games = reg_schedule.loc[reg_schedule["week"] == next_week].copy()
    # Create team -> opponent map
     matchup_rows = []
 
@@ -745,6 +690,52 @@ try:
         "TD_Allowed"
     ]    
 
+    # Keep an all-games copy for results matching before applying the
+    # viewer's slate selection to the visible prediction board.
+    tracker_ratings = td_match.copy()
+    slate_games = next_games.copy()
+    # ------------------------------
+    # SLATE FILTER
+    # ------------------------------
+    next_games["Game_Hour"] = pd.to_datetime(
+        next_games["gametime"],
+        format="%H:%M",
+        errors="coerce"
+    ).dt.hour
+
+    if slate == "Thursday":
+        slate_games = slate_games[
+            next_games["weekday"] == "Thursday"
+        ].copy()
+
+    elif slate == "Sunday Early":
+        slate_games = slate_games[
+            (next_games["weekday"] == "Sunday") &
+            (next_games["Game_Hour"] < 16)
+        ].copy()
+
+    elif slate == "Sunday Late":
+        slate_games = slate_games[
+            (next_games["weekday"] == "Sunday") &
+            (next_games["Game_Hour"] >= 16) &
+            (next_games["Game_Hour"] < 20)
+        ].copy()
+
+    elif slate == "Sunday Night":
+        slate_games = slate_games[
+            (next_games["weekday"] == "Sunday") &
+            (next_games["Game_Hour"] >= 20)
+        ].copy()
+
+    elif slate == "Monday Night":
+        slate_games = slate_games[
+            next_games["weekday"] == "Monday"
+       ].copy()
+
+    if slate != "All Games":
+        visible_teams = set(slate_games["home_team"]).union(set(slate_games["away_team"]))
+        td_match = td_match.loc[td_match["Team"].isin(visible_teams)].copy()
+
     st.write(f"**Upcoming week:** {next_week}")
 
     def color_td_match(val):
@@ -876,7 +867,7 @@ try:
         events["Player_ID"] = events["Player_ID"].astype(str)
 
         if events.empty:
-            st.info("No rushing or receiving touchdowns recorded in the available play-by-play for this week yet.")
+            st.info("No offensive touchdowns in the available play-by-play for this week yet. Data may not have been published.")
         else:
             td_totals = events.groupby(["game_id", "Player_ID", "Team", "Player"], as_index=False).agg(
                 Actual_TDs=("play_id", "nunique"),
@@ -889,9 +880,9 @@ try:
                     columns={"away_team": "Team", "home_team": "Opp"})
             ], ignore_index=True)
             td_totals = td_totals.merge(team_games, on=["game_id", "Team"], how="left")
-            # Current TD Match scores are available for the chosen slate;
+            # Ratings cover all games in the week, not just the selected slate.
             # use only matching team and player IDs, avoiding name collisions.
-            current_ratings = td_match[[
+            current_ratings = tracker_ratings[[
                 "Player_ID", "Team", "TD_Rank", "Team_Rank",
                 "TD_Match", "RZ_Share", "Bet_Tier", "Position"
             ]].copy()
@@ -901,7 +892,7 @@ try:
                 on=["Player_ID", "Team"], how="left"
             )
             results["Model_Status"] = results["TD_Match"].notna().map({
-                True: "Current rating", False: "Not on selected slate"
+                True: "Current rating", False: "No current-week rating"
             })
             results = results.sort_values(["Actual_TDs", "Team"], ascending=[False, True])
             st.metric("Recorded offensive TDs", int(results["Actual_TDs"].sum()))
