@@ -900,24 +900,72 @@ try:
                 Actual_TDs=("Actual_TDs", "sum"),
                 TD_Types=("TD_Type", lambda x: ", ".join(sorted(set(x))))
             )
-            # ESPN and nflverse use different player identifiers. Match by
-            # normalized full name + team; never use name alone.
-            def normalized_name(name):
-                import re
-                name = str(name).lower()
-                name = re.sub(r"[^a-z0-9 ]", "", name)
-                return re.sub(r"\\s+", " ", name).strip()
+            # nflverse PBP uses abbreviated player names (e.g. J.Chase),
+            # while ESPN uses full names. Resolve through the GSIS roster
+            # full-name field first, then unique team + initial + surname.
+            import re
+            import unicodedata
 
+            def normalized_name(value):
+                value = unicodedata.normalize("NFKD", str(value))
+                value = "".join(c for c in value if not unicodedata.combining(c))
+                value = re.sub(r"[^a-z0-9 ]", " ", value.lower())
+                return " ".join(value.split())
+
+            def short_key(value):
+                parts = normalized_name(value).split()
+                return (parts[0][:1] + " " + parts[-1]) if len(parts) >= 2 else ""
+
+            team_aliases = {"WSH": "WAS", "JAC": "JAX", "LA": "LAR"}
+            live_df["Team"] = live_df["Team"].replace(team_aliases)
             ratings = tracker_ratings[[
-                "Player", "Team", "TD_Rank", "Team_Rank",
+                "Player_ID", "Player", "Team", "TD_Rank", "Team_Rank",
                 "TD_Match", "RZ_Share", "Bet_Tier"
             ]].copy()
-            ratings["Join_Name"] = ratings["Player"].map(normalized_name)
-            live_df["Join_Name"] = live_df["Player"].map(normalized_name)
-            results = live_df.merge(
-                ratings.drop(columns=["Player"]).drop_duplicates(["Join_Name", "Team"]),
-                on=["Join_Name", "Team"], how="left"
+            ratings["Player_ID"] = ratings["Player_ID"].astype(str)
+            # Full names from roster records, when provided by nflreadpy.
+            name_field = next(
+                (c for c in ("full_name", "player_name", "display_name", "football_name")
+                 if c in rosters.columns), None
             )
+            if name_field is not None:
+                roster_names = rosters[["gsis_id", name_field]].dropna().drop_duplicates("gsis_id")
+                roster_names["gsis_id"] = roster_names["gsis_id"].astype(str)
+                ratings = ratings.merge(
+                    roster_names.rename(columns={"gsis_id": "Player_ID", name_field: "Roster_Name"}),
+                    on="Player_ID", how="left"
+                )
+            else:
+                ratings["Roster_Name"] = pd.NA
+            ratings["Full_Key"] = ratings["Roster_Name"].fillna(ratings["Player"]).map(normalized_name)
+            ratings["Short_Key"] = ratings["Roster_Name"].fillna(ratings["Player"]).map(short_key)
+            # PBP names can be J.Chase rather than Ja'Marr Chase.
+            def pbp_short_key(value):
+                v = str(value).replace(".", " ")
+                return short_key(v)
+            missing_roster = ratings["Roster_Name"].isna()
+            ratings.loc[missing_roster, "Short_Key"] = ratings.loc[missing_roster, "Player"].map(pbp_short_key)
+
+            live_df["Full_Key"] = live_df["Player"].map(normalized_name)
+            live_df["Short_Key"] = live_df["Player"].map(short_key)
+            rating_cols = ["TD_Rank", "Team_Rank", "TD_Match", "RZ_Share", "Bet_Tier"]
+            # Require unique team/name combinations to avoid incorrect ranks.
+            full_counts = ratings.groupby(["Team", "Full_Key"])["Player_ID"].transform("nunique")
+            unique_full = ratings.loc[full_counts == 1].drop_duplicates(["Team", "Full_Key"])
+            results = live_df.merge(
+                unique_full[["Team", "Full_Key"] + rating_cols],
+                on=["Team", "Full_Key"], how="left"
+            )
+            short_counts = ratings.groupby(["Team", "Short_Key"])["Player_ID"].transform("nunique")
+            unique_short = ratings.loc[(short_counts == 1) & (ratings["Short_Key"] != "")].drop_duplicates(["Team", "Short_Key"])
+            fallback = results["TD_Match"].isna()
+            if fallback.any():
+                short_matches = results.loc[fallback, ["Team", "Short_Key"]].merge(
+                    unique_short[["Team", "Short_Key"] + rating_cols],
+                    on=["Team", "Short_Key"], how="left", sort=False
+                )
+                for col in rating_cols:
+                    results.loc[fallback, col] = short_matches[col].to_numpy()
             results["Model_Status"] = results["TD_Match"].notna().map({
                 True: "Current rating", False: "No matching rating"
             })
