@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import nflreadpy as nfl
 import requests
+import numpy as np
 
 # -----------------------------
 # PAGE SETUP
@@ -821,6 +822,74 @@ try:
     )
   
 
+
+    # -----------------------------
+    # OPTIONAL MONTE CARLO TD SIMULATOR
+    # -----------------------------
+    st.divider()
+    st.subheader("🎲 Anytime TD Simulator")
+    st.caption(
+        "Experimental 10,000-run estimate based on scoring opportunities and "
+        "opponent TD allowance. Independent of TD Match rankings and bet tiers."
+    )
+    if st.button("Run 10,000 Simulations", type="primary", key="run_td_sim"):
+        if td_match.empty:
+            st.info("No players available for the selected slate.")
+        else:
+            # Estimate each player's per-game TD intensity using smoothed
+            # observed scoring and high-value opportunity rates. Do not
+            # interpret TD Match (a relative score) as a probability.
+            sim = td_match.copy()
+            games = sim["Games_Played"].astype(float).clip(lower=1)
+            actual_tds = sim["TDs"].astype(float).clip(lower=0)
+            high_value = (
+                sim["I5_Opp_PG"].astype(float).clip(lower=0)
+                + 0.35 * (sim["I10_Opp_PG"].astype(float) - sim["I5_Opp_PG"].astype(float)).clip(lower=0)
+                + 0.10 * (sim["RZ_Opp_PG"].astype(float) - sim["I10_Opp_PG"].astype(float)).clip(lower=0)
+            )
+            # Empirical position prior, smoothed to avoid zero-TD artifacts.
+            position_rates = {
+                "QB": 0.10, "RB": 0.35, "WR": 0.28, "TE": 0.20
+            }
+            prior = sim["Position"].map(position_rates).fillna(0.20).astype(float)
+            observed_rate = (actual_tds + 4 * prior) / (games + 4)
+            opportunity_rate = high_value * 0.45
+            # Blend actual TD rate with recent high-value opportunity.
+            base_lambda = 0.60 * observed_rate + 0.40 * opportunity_rate
+            # Defense effect is capped to prevent extreme outliers.
+            defense_td_pg = sim["TD_Allowed_PG"].astype(float).fillna(2.0)
+            defense_factor = (defense_td_pg / 2.4).clip(lower=0.75, upper=1.25)
+            expected_tds = (base_lambda * defense_factor).clip(lower=0.01, upper=1.8)
+            # Fixed seed gives reproducible results for the same inputs.
+            rng = np.random.default_rng(2026 + int(next_week))
+            simulated_tds = rng.poisson(
+                expected_tds.to_numpy()[None, :],
+                size=(10000, len(sim))
+            )
+            sim["Sim_TD_Chance"] = (simulated_tds >= 1).mean(axis=0) * 100
+            sim["Sim_2Plus_Chance"] = (simulated_tds >= 2).mean(axis=0) * 100
+            sim["Sim_Avg_TDs"] = simulated_tds.mean(axis=0)
+            sim = sim.sort_values("Sim_TD_Chance", ascending=False)
+            sim_display = sim[[
+                "Player", "Team", "Opp", "Position", "TD_Rank", "Team_Rank",
+                "TD_Match", "Bet_Tier", "Sim_TD_Chance",
+                "Sim_2Plus_Chance", "Sim_Avg_TDs"
+            ]].copy()
+            st.dataframe(
+                sim_display.style.format({
+                    "TD_Match": "{:.1f}",
+                    "Sim_TD_Chance": "{:.1f}%",
+                    "Sim_2Plus_Chance": "{:.1f}%",
+                    "Sim_Avg_TDs": "{:.2f}"
+                }),
+                hide_index=True, use_container_width=True
+            )
+            st.caption(
+                "Model assumptions: independent Poisson touchdown counts, "
+                "position-level priors, historical scoring, scoring-area chances, "
+                "and capped opponent adjustment. These probabilities are not "
+                "backtested or calibrated; use for comparison, not as verified betting edges."
+            )
 
     # -----------------------------
     # LIVE TD RESULTS TRACKER (ESPN game boxscores, independent of delayed PBP)
