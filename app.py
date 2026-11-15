@@ -814,11 +814,57 @@ try:
     # -----------------------------
     st.divider()
     st.subheader("🎲 Anytime TD Simulator")
-    st.info("Availability check: official game-day inactive status is not yet connected. Verify player availability before betting.")
+    st.info("Availability: ESPN injury-report OUT designations are checked at simulation time. Official game-day inactive lists are not yet verified; confirm before betting.")
     st.caption(
         "Experimental 10,000-run estimate based on scoring opportunities and "
         "opponent TD allowance. Independent of TD Match rankings and bet tiers."
     )
+    @st.cache_data(ttl=300, show_spinner=False)
+    def espn_game_availability(season, week):
+        """Conservative ESPN game-day availability flags, never infer inactive from DNP."""
+        response = requests.get(
+            "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
+            params={"season": season, "seasontype": 2, "week": week, "limit": 50},
+            timeout=12
+        )
+        response.raise_for_status()
+        unavailable = set()
+        flagged = set()
+        checked = 0
+        aliases = {"WSH": "WAS", "JAC": "JAX", "LA": "LAR"}
+        for event in response.json().get("events", []):
+            event_id = event.get("id")
+            if not event_id:
+                continue
+            try:
+                summary_response = requests.get(
+                    "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary",
+                    params={"event": event_id}, timeout=10
+                )
+                summary_response.raise_for_status()
+                summary = summary_response.json()
+            except (requests.RequestException, ValueError):
+                continue
+            checked += 1
+            # ESPN game summary injury list is distinct from the official
+            # 90-minute inactive report. Only explicitly OUT is excluded;
+            # questionable/doubtful remain flagged, not removed.
+            for team_entry in summary.get("injuries", []):
+                team_info = team_entry.get("team", {})
+                team = aliases.get(team_info.get("abbreviation", ""), team_info.get("abbreviation", ""))
+                for item in team_entry.get("injuries", []):
+                    athlete = item.get("athlete", {})
+                    name = athlete.get("displayName") or athlete.get("fullName")
+                    status = str(item.get("status", "")).lower().strip()
+                    if not name or not team:
+                        continue
+                    key = (team, name.casefold())
+                    if status in {"out", "injured reserve", "ir"}:
+                        unavailable.add(key)
+                    elif status in {"questionable", "doubtful"}:
+                        flagged.add(key)
+        return unavailable, flagged, checked
+
     @st.cache_data(ttl=60, show_spinner=False)
     def completed_nfl_teams(season, week):
         response = requests.get(
@@ -855,6 +901,40 @@ try:
                 st.warning("Could not verify completed games; selected slate is unfiltered.")
             if sim.empty:
                 st.info("All selected games have finished.")
+                st.stop()
+            # Apply only explicit ESPN OUT designations, never infer inactive
+            # from a missing roster/boxscore entry or "did not play".
+            try:
+                unavailable, flagged, checked = espn_game_availability(2026, next_week)
+                if checked:
+                    name_lookup = rosters[["gsis_id"] + [
+                        c for c in ("full_name", "player_name", "display_name")
+                        if c in rosters.columns
+                    ][:1]].drop_duplicates("gsis_id").copy()
+                    if len(name_lookup.columns) > 1:
+                        name_lookup["gsis_id"] = name_lookup["gsis_id"].astype(str)
+                        names = name_lookup.set_index("gsis_id").iloc[:, 0].to_dict()
+                        sim["_availability_name"] = sim["Player_ID"].astype(str).map(names).fillna(sim["Player"])
+                    else:
+                        sim["_availability_name"] = sim["Player"]
+                    keys = list(zip(sim["Team"], sim["_availability_name"].astype(str).str.casefold()))
+                    sim["Availability"] = [
+                        "OUT (ESPN)" if k in unavailable else
+                        "Check status" if k in flagged else "Not confirmed"
+                        for k in keys
+                    ]
+                    out_count = int((sim["Availability"] == "OUT (ESPN)").sum())
+                    sim = sim.loc[sim["Availability"] != "OUT (ESPN)"].copy()
+                    st.caption(f"ESPN injury summaries checked: {checked} games. Explicit OUT players excluded: {out_count}. "
+                               "This is not an official inactive-list confirmation.")
+                else:
+                    sim["Availability"] = "Not verified"
+                    st.warning("No ESPN injury summaries available; player status unverified.")
+            except (requests.RequestException, ValueError, KeyError) as availability_error:
+                sim["Availability"] = "Not verified"
+                st.warning(f"Player availability could not be verified: {availability_error}")
+            if sim.empty:
+                st.info("No eligible players remain after availability checks.")
                 st.stop()
             games = sim["Games_Played"].astype(float).clip(lower=1)
             actual_tds = sim["TDs"].astype(float).clip(lower=0)
@@ -926,7 +1006,7 @@ try:
             )
             sim = sim.sort_values("Sim_TD_Chance", ascending=False)
             sim_display = sim[[
-                "Player", "Team", "Opp", "Position", "TD_Rank", "Team_Rank",
+                "Player", "Team", "Opp", "Position", "Availability", "TD_Rank", "Team_Rank",
                 "TD_Match", "Bet_Tier", "Agreement", "Sim_TD_Chance",
                 "Sim_2Plus_Chance", "Sim_Avg_TDs"
             ]].copy()
