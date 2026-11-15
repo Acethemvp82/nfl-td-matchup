@@ -777,33 +777,6 @@ try:
         advanced_view = td_match[td_match_display + advanced_td_columns]
         st.dataframe(advanced_view, hide_index=True, use_container_width=True)
 
-    # Pregame snapshot is captured only when requested, not silently
-    # overwritten by live recalculations. Download for durable history.
-    st.divider()
-    st.subheader("📋 Pregame TD Tracking")
-    st.caption("Capture before kickoff. Download the CSV to preserve rankings across app restarts.")
-    if "nfl_td_snapshots" not in st.session_state:
-        st.session_state["nfl_td_snapshots"] = {}
-    if st.button("Capture current pregame rankings", key="capture_td_snapshot"):
-        stamp = pd.Timestamp.now(tz="America/New_York").isoformat()
-        snap = tracker_ratings[[
-            "Player_ID", "Player", "Team", "Opp", "TD_Rank", "Team_Rank",
-            "TD_Match", "RZ_Share", "Bet_Tier"
-        ]].copy()
-        snap["Season"] = 2026
-        snap["Week"] = next_week
-        snap["Captured_ET"] = stamp
-        st.session_state["nfl_td_snapshots"][next_week] = snap
-        st.success("Snapshot captured for this session. Download it to retain a permanent copy.")
-    snapshot = st.session_state["nfl_td_snapshots"].get(next_week)
-    if snapshot is not None:
-        st.download_button(
-            "Download pregame snapshot CSV",
-            data=snapshot.to_csv(index=False).encode("utf-8"),
-            file_name=f"nfl_td_pregame_2026_week_{next_week}.csv",
-            mime="text/csv", key="download_td_snapshot"
-        )
-
     # -----------------------------
     # OPTIONAL MONTE CARLO TD SIMULATOR
     # -----------------------------
