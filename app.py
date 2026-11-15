@@ -13,6 +13,37 @@ st.set_page_config(
     layout="wide"
 )
 
+# First Basket Blue palette, shared with NHL model.
+st.markdown("""<style>
+:root { color-scheme: dark; }
+html, body, [data-testid="stAppViewContainer"], .stApp {
+    background: #0b1020 !important;
+    color: #eef4fa;
+}
+[data-testid="stHeader"], [data-testid="stToolbar"] {
+    background: #0b1020 !important;
+}
+[data-testid="stSidebar"], [data-testid="stSidebarContent"] {
+    background: #172236 !important;
+}
+.block-container { padding-top: 2rem; }
+h1, h2, h3 { color: #eef4fa !important; }
+[data-testid="stMetric"], [data-testid="stExpander"] {
+    background: #172236;
+    border-radius: 12px;
+}
+div[data-testid="stCaptionContainer"] { color: #a9b8cc; }
+div.stButton > button[kind="primary"] {
+    background: #1d4ed8 !important;
+    color: #eef4fa !important;
+    border-color: #1d4ed8 !important;
+}
+[data-testid="stDataFrame"] { border-radius: 10px; }
+</style>""", unsafe_allow_html=True)
+
+def navy_cell(value):
+    return "background-color: #172236; color: #eef4fa; font-weight: 500"
+
 st.title("🏈 NFL Anytime TD Matchup")
 st.caption("Building the offensive opportunity side of the TD Matchup model.")
 
@@ -768,6 +799,7 @@ try:
             return ""
     styled_td = (
         td_match[td_match_display].style
+        .map(navy_cell)
         .map(color_td_match, subset=["TD_Match"])
         .map(color_rz_share, subset=["RZ_Share"])
         .format({"TD_Match": "{:.1f}", "RZ_Share": "{:.1f}%"})
@@ -887,7 +919,7 @@ try:
                 "Sim_2Plus_Chance", "Sim_Avg_TDs"
             ]].copy()
             st.dataframe(
-                sim_display.style.format({
+                sim_display.style.map(navy_cell).map(color_td_match, subset=["TD_Match"]).format({
                     "TD_Match": "{:.1f}",
                     "Sim_TD_Chance": "{:.1f}%",
                     "Sim_2Plus_Chance": "{:.1f}%",
