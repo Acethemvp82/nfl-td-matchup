@@ -814,7 +814,7 @@ try:
     # -----------------------------
     st.divider()
     st.subheader("🎲 Anytime TD Simulator")
-    st.info("Availability: ESPN injury-report OUT designations are checked at simulation time. Official game-day inactive lists are not yet verified; confirm before betting.")
+    st.caption("Availability uses ESPN injury reports, not official game-day inactives. No reported issue does not mean confirmed active.")
     st.caption(
         "Experimental 10,000-run estimate based on scoring opportunities and "
         "opponent TD allowance. Independent of TD Match rankings and bet tiers."
@@ -917,16 +917,33 @@ try:
                         sim["_availability_name"] = sim["Player_ID"].astype(str).map(names).fillna(sim["Player"])
                     else:
                         sim["_availability_name"] = sim["Player"]
-                    keys = list(zip(sim["Team"], sim["_availability_name"].astype(str).str.casefold()))
+                    # ESPN only lists players with reported injury concerns.
+                    # An absent injury flag is NOT official active confirmation.
+                    import re
+                    import unicodedata
+                    def injury_name_key(value):
+                        value = unicodedata.normalize("NFKD", str(value))
+                        value = "".join(ch for ch in value if not unicodedata.combining(ch))
+                        parts = re.sub(r"[^a-z0-9 ]", " ", value.lower()).split()
+                        while parts and parts[-1] in {"jr", "sr", "ii", "iii", "iv", "v"}:
+                            parts.pop()
+                        return " ".join(parts)
+                    normalized_out = {(team, injury_name_key(name)) for team, name in unavailable}
+                    normalized_flagged = {(team, injury_name_key(name)) for team, name in flagged}
+                    keys = [
+                        (team, injury_name_key(name))
+                        for team, name in zip(sim["Team"], sim["_availability_name"])
+                    ]
                     sim["Availability"] = [
-                        "OUT (ESPN)" if k in unavailable else
-                        "Check status" if k in flagged else "Not confirmed"
+                        "OUT (ESPN)" if k in normalized_out else
+                        "Injury flag - verify" if k in normalized_flagged else
+                        "No reported issue"
                         for k in keys
                     ]
                     out_count = int((sim["Availability"] == "OUT (ESPN)").sum())
                     sim = sim.loc[sim["Availability"] != "OUT (ESPN)"].copy()
                     st.caption(f"ESPN injury summaries checked: {checked} games. Explicit OUT players excluded: {out_count}. "
-                               "This is not an official inactive-list confirmation.")
+                               "No reported issue means no matched ESPN injury designation, not confirmed active.")
                 else:
                     sim["Availability"] = "Not verified"
                     st.warning("No ESPN injury summaries available; player status unverified.")
