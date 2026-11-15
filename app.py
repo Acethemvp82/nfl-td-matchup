@@ -811,6 +811,25 @@ try:
         "Experimental 10,000-run estimate based on scoring opportunities and "
         "opponent TD allowance. Independent of TD Match rankings and bet tiers."
     )
+    @st.cache_data(ttl=60, show_spinner=False)
+    def completed_nfl_teams(season, week):
+        response = requests.get(
+            "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
+            params={"season": season, "seasontype": 2, "week": week, "limit": 50},
+            timeout=12
+        )
+        response.raise_for_status()
+        finished = set()
+        aliases = {"WSH": "WAS", "JAC": "JAX", "LA": "LAR"}
+        for event in response.json().get("events", []):
+            comp = (event.get("competitions") or [{}])[0]
+            status = comp.get("status", {}).get("type", {})
+            if status.get("completed") or status.get("name") == "STATUS_FINAL":
+                for entry in comp.get("competitors", []):
+                    team = entry.get("team", {}).get("abbreviation", "")
+                    finished.add(aliases.get(team, team))
+        return finished
+
     if st.button("Run 10,000 Simulations", type="primary", key="run_td_sim"):
         if td_match.empty:
             st.info("No players available for the selected slate.")
@@ -819,6 +838,16 @@ try:
             # observed scoring and high-value opportunity rates. Do not
             # interpret TD Match (a relative score) as a probability.
             sim = td_match.copy()
+            try:
+                finished_teams = completed_nfl_teams(2026, next_week)
+                sim = sim.loc[~sim["Team"].isin(finished_teams)].copy()
+                if finished_teams:
+                    st.caption("Completed teams excluded: " + ", ".join(sorted(finished_teams)))
+            except requests.RequestException:
+                st.warning("Could not verify completed games; selected slate is unfiltered.")
+            if sim.empty:
+                st.info("All selected games have finished.")
+                st.stop()
             games = sim["Games_Played"].astype(float).clip(lower=1)
             actual_tds = sim["TDs"].astype(float).clip(lower=0)
             high_value = (
@@ -839,6 +868,10 @@ try:
             defense_td_pg = sim["TD_Allowed_PG"].astype(float).fillna(2.0)
             defense_factor = (defense_td_pg / 2.4).clip(lower=0.75, upper=1.25)
             expected_tds = (base_lambda * defense_factor).clip(lower=0.01, upper=1.8)
+            # Constrain team scoring expectations; this is a heuristic,
+            # not a validated team-level probability model.
+            team_total = expected_tds.groupby(sim["Team"]).transform("sum")
+            expected_tds = expected_tds * (3.5 / team_total.clip(lower=3.5))
             # Fixed seed gives reproducible results for the same inputs.
             rng = np.random.default_rng(2026 + int(next_week))
             simulated_tds = rng.poisson(
@@ -848,10 +881,17 @@ try:
             sim["Sim_TD_Chance"] = (simulated_tds >= 1).mean(axis=0) * 100
             sim["Sim_2Plus_Chance"] = (simulated_tds >= 2).mean(axis=0) * 100
             sim["Sim_Avg_TDs"] = simulated_tds.mean(axis=0)
+            sim["Sim_Rank"] = sim["Sim_TD_Chance"].rank(ascending=False, method="min").astype(int)
+            top_n = max(1, int(np.ceil(len(sim) * 0.25)))
+            sim["Model_Agreement"] = np.where(
+                (sim["TD_Rank"].rank(method="min") <= top_n) &
+                (sim["Sim_Rank"] <= top_n),
+                "Both top 25%", "Mixed / lower"
+            )
             sim = sim.sort_values("Sim_TD_Chance", ascending=False)
             sim_display = sim[[
                 "Player", "Team", "Opp", "Position", "TD_Rank", "Team_Rank",
-                "TD_Match", "Bet_Tier", "Sim_TD_Chance",
+                "TD_Match", "Bet_Tier", "Model_Agreement", "Sim_TD_Chance",
                 "Sim_2Plus_Chance", "Sim_Avg_TDs"
             ]].copy()
             st.dataframe(
@@ -866,7 +906,7 @@ try:
             st.caption(
                 "Model assumptions: independent Poisson touchdown counts, "
                 "position-level priors, historical scoring, scoring-area chances, "
-                "and capped opponent adjustment. These probabilities are not "
+                "capped opponent adjustment and team-level scoring cap. These probabilities are not "
                 "backtested or calibrated; use for comparison, not as verified betting edges."
             )
 
