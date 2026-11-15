@@ -849,24 +849,41 @@ try:
             expected_tds = expected_tds * (3.5 / team_total.clip(lower=3.5))
             # Fixed seed gives reproducible results for the same inputs.
             rng = np.random.default_rng(2026 + int(next_week))
-            simulated_tds = rng.poisson(
-                expected_tds.to_numpy()[None, :],
-                size=(10000, len(sim))
-            )
+            # Simulate shared team scoring pools rather than independent
+            # player counts; this captures within-team competition.
+            simulated_tds = np.zeros((10000, len(sim)), dtype=np.int16)
+            team_values = sim["Team"].to_numpy()
+            for team in pd.unique(team_values):
+                indexes = np.flatnonzero(team_values == team)
+                intensities = expected_tds.to_numpy()[indexes]
+                team_mean = float(intensities.sum())
+                if team_mean <= 0:
+                    continue
+                team_counts = rng.poisson(team_mean, size=10000)
+                weights = intensities / team_mean
+                for trial, total in enumerate(team_counts):
+                    if total:
+                        simulated_tds[trial, indexes] = rng.multinomial(int(total), weights)
             sim["Sim_TD_Chance"] = (simulated_tds >= 1).mean(axis=0) * 100
             sim["Sim_2Plus_Chance"] = (simulated_tds >= 2).mean(axis=0) * 100
             sim["Sim_Avg_TDs"] = simulated_tds.mean(axis=0)
             sim["Sim_Rank"] = sim["Sim_TD_Chance"].rank(ascending=False, method="min").astype(int)
+            # Agreement is relative to this selected slate, not the
+            # full-season TD_Rank numbers.
             top_n = max(1, int(np.ceil(len(sim) * 0.25)))
             sim["Model_Agreement"] = np.where(
-                (sim["TD_Rank"].rank(method="min") <= top_n) &
+                (sim["TD_Match"].rank(ascending=False, method="min") <= top_n) &
                 (sim["Sim_Rank"] <= top_n),
                 "Both top 25%", "Mixed / lower"
+            )
+            sim["Agreement"] = np.where(
+                sim["Model_Agreement"] == "Both top 25%",
+                "Strong agreement", "No strong agreement"
             )
             sim = sim.sort_values("Sim_TD_Chance", ascending=False)
             sim_display = sim[[
                 "Player", "Team", "Opp", "Position", "TD_Rank", "Team_Rank",
-                "TD_Match", "Bet_Tier", "Model_Agreement", "Sim_TD_Chance",
+                "TD_Match", "Bet_Tier", "Agreement", "Sim_TD_Chance",
                 "Sim_2Plus_Chance", "Sim_Avg_TDs"
             ]].copy()
             st.dataframe(
@@ -879,185 +896,189 @@ try:
                 hide_index=True, use_container_width=True
             )
             st.caption(
-                "Model assumptions: independent Poisson touchdown counts, "
+                "Model assumptions: Poisson team touchdown totals with multinomial player allocation, "
                 "position-level priors, historical scoring, scoring-area chances, "
                 "capped opponent adjustment and team-level scoring cap. These probabilities are not "
                 "backtested or calibrated; use for comparison, not as verified betting edges."
             )
 
     # -----------------------------
-    # LIVE TD RESULTS TRACKER (ESPN game boxscores, independent of delayed PBP)
-    # -----------------------------
-    st.divider()
-    st.subheader("🏈 Live TD Results")
-    st.caption("Live game boxscores from ESPN; TD Match ratings are current, not saved pregame values.")
+    @st.fragment(run_every="60s")
+    def live_td_tracker():
+        # LIVE TD RESULTS TRACKER (ESPN game boxscores, independent of delayed PBP)
+        # -----------------------------
+        st.divider()
+        st.subheader("🏈 Live TD Results")
+        st.caption("Live game boxscores from ESPN; TD Match ratings are current, not saved pregame values.")
 
-    @st.cache_data(ttl=60, show_spinner=False)
-    def fetch_live_td_results(season, week):
-        base = "https://site.api.espn.com/apis/site/v2/sports/football/nfl"
-        session = requests.Session()
-        session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; TDMatch/1.0)"})
-        response = session.get(
-            base + "/scoreboard",
-            params={"season": season, "seasontype": 2, "week": week, "limit": 50},
-            timeout=12,
-        )
-        response.raise_for_status()
-        rows = []
-        games_seen = 0
-        for event in response.json().get("events", []):
-            competition = (event.get("competitions") or [{}])[0]
-            status = competition.get("status", {}).get("type", {})
-            if status.get("name") == "STATUS_SCHEDULED":
-                continue
-            games_seen += 1
-            try:
-                game_response = session.get(
-                    base + "/summary", params={"event": event["id"]}, timeout=12
-                )
-                game_response.raise_for_status()
-                boxscore = game_response.json().get("boxscore", {})
-                for team_entry in boxscore.get("players", []):
-                    team = team_entry.get("team", {}).get("abbreviation", "")
-                    for category in team_entry.get("statistics", []):
-                        cat = category.get("name", "").lower()
-                        if cat not in ("rushing", "receiving"):
-                            continue
-                        labels = [str(v).upper() for v in category.get("labels", [])]
-                        if "TD" not in labels:
-                            continue
-                        td_index = labels.index("TD")
-                        for athlete in category.get("athletes", []):
-                            stats = athlete.get("stats", [])
-                            if td_index >= len(stats):
-                                continue
-                            try:
-                                td_count = int(float(stats[td_index]))
-                            except (ValueError, TypeError):
-                                continue
-                            if td_count <= 0:
-                                continue
-                            player = athlete.get("athlete", {})
-                            rows.append({
-                                "Player": player.get("displayName", ""),
-                                "Team": team,
-                                "Actual_TDs": td_count,
-                                "TD_Type": "Rush" if cat == "rushing" else "Receiving",
-                                "ESPN_ID": str(player.get("id", "")),
-                            })
-            except (requests.RequestException, KeyError, ValueError):
-                continue
-        return rows, games_seen
-
-    try:
-        live_rows, live_games = fetch_live_td_results(2026, next_week)
-        if not live_rows:
-            st.info(
-                "No rushing or receiving touchdowns available from ESPN yet. "
-                "Games may not have started or the live feed may be delayed."
+        @st.cache_data(ttl=60, show_spinner=False)
+        def fetch_live_td_results(season, week):
+            base = "https://site.api.espn.com/apis/site/v2/sports/football/nfl"
+            session = requests.Session()
+            session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; TDMatch/1.0)"})
+            response = session.get(
+                base + "/scoreboard",
+                params={"season": season, "seasontype": 2, "week": week, "limit": 50},
+                timeout=12,
             )
-        else:
-            live_df = pd.DataFrame(live_rows)
-            # One row per scorer; rushing + receiving TDs both count.
-            live_df = live_df.groupby(["Player", "Team"], as_index=False).agg(
-                Actual_TDs=("Actual_TDs", "sum"),
-                TD_Types=("TD_Type", lambda x: ", ".join(sorted(set(x))))
-            )
-            # Resolve ESPN full names to nflverse/GSIS player IDs.
-            # Normalize punctuation, suffixes, and common team aliases;
-            # require unique matches so no player receives a false rank.
-            import re
-            import unicodedata
+            response.raise_for_status()
+            rows = []
+            games_seen = 0
+            for event in response.json().get("events", []):
+                competition = (event.get("competitions") or [{}])[0]
+                status = competition.get("status", {}).get("type", {})
+                if status.get("name") == "STATUS_SCHEDULED":
+                    continue
+                games_seen += 1
+                try:
+                    game_response = session.get(
+                        base + "/summary", params={"event": event["id"]}, timeout=12
+                    )
+                    game_response.raise_for_status()
+                    boxscore = game_response.json().get("boxscore", {})
+                    for team_entry in boxscore.get("players", []):
+                        team = team_entry.get("team", {}).get("abbreviation", "")
+                        for category in team_entry.get("statistics", []):
+                            cat = category.get("name", "").lower()
+                            if cat not in ("rushing", "receiving"):
+                                continue
+                            labels = [str(v).upper() for v in category.get("labels", [])]
+                            if "TD" not in labels:
+                                continue
+                            td_index = labels.index("TD")
+                            for athlete in category.get("athletes", []):
+                                stats = athlete.get("stats", [])
+                                if td_index >= len(stats):
+                                    continue
+                                try:
+                                    td_count = int(float(stats[td_index]))
+                                except (ValueError, TypeError):
+                                    continue
+                                if td_count <= 0:
+                                    continue
+                                player = athlete.get("athlete", {})
+                                rows.append({
+                                    "Player": player.get("displayName", ""),
+                                    "Team": team,
+                                    "Actual_TDs": td_count,
+                                    "TD_Type": "Rush" if cat == "rushing" else "Receiving",
+                                    "ESPN_ID": str(player.get("id", "")),
+                                })
+                except (requests.RequestException, KeyError, ValueError):
+                    continue
+            return rows, games_seen
 
-            def normalized_name(value):
-                value = unicodedata.normalize("NFKD", str(value))
-                value = "".join(c for c in value if not unicodedata.combining(c))
-                parts = re.sub(r"[^a-z0-9 ]", " ", value.lower()).split()
-                while parts and parts[-1] in {"jr", "sr", "ii", "iii", "iv", "v"}:
-                    parts.pop()
-                return " ".join(parts)
-
-            def short_key(value):
-                parts = normalized_name(value).split()
-                return (parts[0][0] + " " + parts[-1]) if len(parts) >= 2 else ""
-
-            team_aliases = {"WSH": "WAS", "JAC": "JAX", "LA": "LAR"}
-            live_df["Team"] = live_df["Team"].replace(team_aliases)
-            ratings = tracker_ratings[[
-                "Player_ID", "Player", "Team", "TD_Rank", "Team_Rank",
-                "TD_Match", "RZ_Share", "Bet_Tier"
-            ]].copy()
-            ratings["Player_ID"] = ratings["Player_ID"].astype(str)
-            name_field = next(
-                (c for c in ("full_name", "player_name", "display_name", "football_name")
-                 if c in rosters.columns), None
-            )
-            if name_field:
-                roster_names = rosters[["gsis_id", name_field]].dropna().drop_duplicates("gsis_id")
-                roster_names["gsis_id"] = roster_names["gsis_id"].astype(str)
-                ratings = ratings.merge(
-                    roster_names.rename(columns={"gsis_id": "Player_ID", name_field: "Roster_Name"}),
-                    on="Player_ID", how="left"
+        try:
+            live_rows, live_games = fetch_live_td_results(2026, next_week)
+            if not live_rows:
+                st.info(
+                    "No rushing or receiving touchdowns available from ESPN yet. "
+                    "Games may not have started or the live feed may be delayed."
                 )
             else:
-                ratings["Roster_Name"] = pd.NA
+                live_df = pd.DataFrame(live_rows)
+                # One row per scorer; rushing + receiving TDs both count.
+                live_df = live_df.groupby(["Player", "Team"], as_index=False).agg(
+                    Actual_TDs=("Actual_TDs", "sum"),
+                    TD_Types=("TD_Type", lambda x: ", ".join(sorted(set(x))))
+                )
+                # Resolve ESPN full names to nflverse/GSIS player IDs.
+                # Normalize punctuation, suffixes, and common team aliases;
+                # require unique matches so no player receives a false rank.
+                import re
+                import unicodedata
 
-            ratings["Full_Key"] = ratings["Roster_Name"].fillna(ratings["Player"]).map(normalized_name)
-            ratings["Short_Key"] = ratings["Roster_Name"].fillna(ratings["Player"]).map(short_key)
-            # PBP names often use J.Chase; a dot must split initial/surname.
-            no_roster = ratings["Roster_Name"].isna()
-            ratings.loc[no_roster, "Short_Key"] = ratings.loc[no_roster, "Player"].map(
-                lambda n: short_key(str(n).replace(".", " "))
-            )
-            live_df["Full_Key"] = live_df["Player"].map(normalized_name)
-            live_df["Short_Key"] = live_df["Player"].map(short_key)
-            rating_cols = ["TD_Rank", "Team_Rank", "TD_Match", "RZ_Share", "Bet_Tier"]
+                def normalized_name(value):
+                    value = unicodedata.normalize("NFKD", str(value))
+                    value = "".join(c for c in value if not unicodedata.combining(c))
+                    parts = re.sub(r"[^a-z0-9 ]", " ", value.lower()).split()
+                    while parts and parts[-1] in {"jr", "sr", "ii", "iii", "iv", "v"}:
+                        parts.pop()
+                    return " ".join(parts)
 
-            # First attempt: exact full name + team.
-            full_counts = ratings.groupby(["Team", "Full_Key"])["Player_ID"].transform("nunique")
-            full_lookup = ratings.loc[
-                (full_counts == 1) & (ratings["Full_Key"] != "")
-            ].drop_duplicates(["Team", "Full_Key"])
-            results = live_df.merge(
-                full_lookup[["Team", "Full_Key"] + rating_cols],
-                on=["Team", "Full_Key"], how="left", validate="many_to_one"
-            )
+                def short_key(value):
+                    parts = normalized_name(value).split()
+                    return (parts[0][0] + " " + parts[-1]) if len(parts) >= 2 else ""
 
-            # Fallback: first initial + last name, only if unique on team.
-            short_counts = ratings.groupby(["Team", "Short_Key"])["Player_ID"].transform("nunique")
-            short_lookup = ratings.loc[
-                (short_counts == 1) & (ratings["Short_Key"] != "")
-            ].drop_duplicates(["Team", "Short_Key"])
-            missing = results["TD_Match"].isna()
-            if missing.any():
-                unmatched = results.loc[missing, ["Team", "Short_Key"]].copy()
-                unmatched["_original_index"] = unmatched.index
-                matched = unmatched.merge(
-                    short_lookup[["Team", "Short_Key"] + rating_cols],
-                    on=["Team", "Short_Key"], how="left", validate="many_to_one"
-                ).set_index("_original_index")
-                for col in rating_cols:
-                    results.loc[matched.index, col] = matched[col]
-            results["Model_Status"] = results["TD_Match"].notna().map({
-                True: "Current rating", False: "No matching rating"
-            })
-            results = results.sort_values(
-                ["Actual_TDs", "Team", "Player"], ascending=[False, True, True]
+                team_aliases = {"WSH": "WAS", "JAC": "JAX", "LA": "LAR"}
+                live_df["Team"] = live_df["Team"].replace(team_aliases)
+                ratings = tracker_ratings[[
+                    "Player_ID", "Player", "Team", "TD_Rank", "Team_Rank",
+                    "TD_Match", "RZ_Share", "Bet_Tier"
+                ]].copy()
+                ratings["Player_ID"] = ratings["Player_ID"].astype(str)
+                name_field = next(
+                    (c for c in ("full_name", "player_name", "display_name", "football_name")
+                     if c in rosters.columns), None
+                )
+                if name_field:
+                    roster_names = rosters[["gsis_id", name_field]].dropna().drop_duplicates("gsis_id")
+                    roster_names["gsis_id"] = roster_names["gsis_id"].astype(str)
+                    ratings = ratings.merge(
+                        roster_names.rename(columns={"gsis_id": "Player_ID", name_field: "Roster_Name"}),
+                        on="Player_ID", how="left"
+                    )
+                else:
+                    ratings["Roster_Name"] = pd.NA
+
+                ratings["Full_Key"] = ratings["Roster_Name"].fillna(ratings["Player"]).map(normalized_name)
+                ratings["Short_Key"] = ratings["Roster_Name"].fillna(ratings["Player"]).map(short_key)
+                # PBP names often use J.Chase; a dot must split initial/surname.
+                no_roster = ratings["Roster_Name"].isna()
+                ratings.loc[no_roster, "Short_Key"] = ratings.loc[no_roster, "Player"].map(
+                    lambda n: short_key(str(n).replace(".", " "))
+                )
+                live_df["Full_Key"] = live_df["Player"].map(normalized_name)
+                live_df["Short_Key"] = live_df["Player"].map(short_key)
+                rating_cols = ["TD_Rank", "Team_Rank", "TD_Match", "RZ_Share", "Bet_Tier"]
+
+                # First attempt: exact full name + team.
+                full_counts = ratings.groupby(["Team", "Full_Key"])["Player_ID"].transform("nunique")
+                full_lookup = ratings.loc[
+                    (full_counts == 1) & (ratings["Full_Key"] != "")
+                ].drop_duplicates(["Team", "Full_Key"])
+                results = live_df.merge(
+                    full_lookup[["Team", "Full_Key"] + rating_cols],
+                    on=["Team", "Full_Key"], how="left", validate="many_to_one"
+                )
+
+                # Fallback: first initial + last name, only if unique on team.
+                short_counts = ratings.groupby(["Team", "Short_Key"])["Player_ID"].transform("nunique")
+                short_lookup = ratings.loc[
+                    (short_counts == 1) & (ratings["Short_Key"] != "")
+                ].drop_duplicates(["Team", "Short_Key"])
+                missing = results["TD_Match"].isna()
+                if missing.any():
+                    unmatched = results.loc[missing, ["Team", "Short_Key"]].copy()
+                    unmatched["_original_index"] = unmatched.index
+                    matched = unmatched.merge(
+                        short_lookup[["Team", "Short_Key"] + rating_cols],
+                        on=["Team", "Short_Key"], how="left", validate="many_to_one"
+                    ).set_index("_original_index")
+                    for col in rating_cols:
+                        results.loc[matched.index, col] = matched[col]
+                results["Model_Status"] = results["TD_Match"].notna().map({
+                    True: "Current rating", False: "No matching rating"
+                })
+                results = results.sort_values(
+                    ["Actual_TDs", "Team", "Player"], ascending=[False, True, True]
+                )
+                st.metric("Recorded offensive TDs", int(results["Actual_TDs"].sum()))
+                unmatched_count = int(results["TD_Match"].isna().sum())
+                if unmatched_count:
+                    st.caption(f"{unmatched_count} scorer(s) have no current-week model ranking. Rankings are never guessed.")
+                st.dataframe(results[[
+                    "Player", "Team", "Actual_TDs", "TD_Types", "TD_Rank",
+                    "Team_Rank", "TD_Match", "RZ_Share", "Bet_Tier", "Model_Status"
+                ]], hide_index=True, use_container_width=True)
+            st.caption(
+                f"ESPN games started/completed: {live_games}. Results refresh when the "
+                "app reruns, with a 60-second data cache. No manual upload needed."
             )
-            st.metric("Recorded offensive TDs", int(results["Actual_TDs"].sum()))
-            unmatched_count = int(results["TD_Match"].isna().sum())
-            if unmatched_count:
-                st.caption(f"{unmatched_count} scorer(s) have no current-week model ranking. Rankings are never guessed.")
-            st.dataframe(results[[
-                "Player", "Team", "Actual_TDs", "TD_Types", "TD_Rank",
-                "Team_Rank", "TD_Match", "RZ_Share", "Bet_Tier", "Model_Status"
-            ]], hide_index=True, use_container_width=True)
-        st.caption(
-            f"ESPN games started/completed: {live_games}. Results refresh when the "
-            "app reruns, with a 60-second data cache. No manual upload needed."
-        )
-    except (requests.RequestException, ValueError, KeyError) as live_error:
-        st.warning(f"Live ESPN results temporarily unavailable: {live_error}")
+        except (requests.RequestException, ValueError, KeyError) as live_error:
+            st.warning(f"Live ESPN results temporarily unavailable: {live_error}")
+
+    live_td_tracker()
 
 except Exception as e:
     st.error("NFL TD opportunity calculation failed.")
