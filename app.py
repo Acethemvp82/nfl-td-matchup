@@ -307,11 +307,7 @@ try:
         "Rec_TD",
         "TDs"
     ]
-    st.dataframe(
-    board[display_cols],
-    hide_index=True,
-    use_container_width=True
-    )
+    with st.expander("Offensive TD Opportunity Research"):\n        st.dataframe(board[display_cols], hide_index=True, use_container_width=True)
     # -----------------------------
     # DEFENSIVE TD VULNERABILITY
     # -----------------------------
@@ -415,11 +411,7 @@ try:
         "TD_Allowed"
     ]
 
-    st.dataframe(
-        defense_board[defense_display],
-        hide_index=True,
-        use_container_width=True
-    )
+    with st.expander("Opponent TD Vulnerability Research"):\n        st.dataframe(defense_board[defense_display], hide_index=True, use_container_width=True)
         # -----------------------------
     # UPCOMING MATCHUPS
     # -----------------------------
@@ -666,31 +658,15 @@ try:
 
     td_match["Bet_Tier"] = td_match.apply(td_bet_tier, axis=1)
     td_match_display = [
-        "TD_Rank",
-        "Team_Rank",
-        "Player",
-        "Team",
-        "Opp",
-        "Position",
-        "TD_Match",
-        "RZ_Share",
-        "Games_Played",
-        "Data_Weight",
-        "RZ_Opp_PG",
-        "I5_Opp_PG",
-        "TD_Grade",
-        "Rush_TD_Signal",
-        "Rec_TD_Signal",
-        "Bet_Tier",
-        "RZ_Opp",
-        "QB_Rush_Threat",
-        "I10_Opp",
-        "I5_Opp",
-        "GL_Opp",
-        "I5_Opp_Allowed",
-        "I10_Opp_Allowed",
-        "TD_Allowed"
-    ]    
+        "TD_Rank", "Team_Rank", "Player", "Team", "Opp", "Position",
+        "TD_Match", "RZ_Share", "Bet_Tier"
+    ]
+    advanced_td_columns = [
+        "Games_Played", "Data_Weight", "RZ_Opp_PG", "I5_Opp_PG",
+        "TD_Grade", "Rush_TD_Signal", "Rec_TD_Signal", "RZ_Opp",
+        "QB_Rush_Threat", "I10_Opp", "I5_Opp", "GL_Opp",
+        "I5_Opp_Allowed", "I10_Opp_Allowed", "TD_Allowed"
+    ]
 
     # Keep an all-games copy for results matching before applying the
     # viewer's slate selection to the visible prediction board.
@@ -789,39 +765,42 @@ try:
         except:
             return ""
     styled_td = (
-       td_match[td_match_display]
-       .style
-      .map(
-          color_td_match,
-          subset=["TD_Match"]
-      )
-      .map(
-          color_rz_share,
-          subset=["RZ_Share"]
+        td_match[td_match_display].style
+        .map(color_td_match, subset=["TD_Match"])
+        .map(color_rz_share, subset=["RZ_Share"])
+        .format({"TD_Match": "{:.1f}", "RZ_Share": "{:.1f}%"})
     )
-     .map(
-         color_def_vulnerability,
-         subset=["I5_Opp_Allowed", "I10_Opp_Allowed", "TD_Allowed"]
-    )   
-        .format({
-          
-          "TD_Match": "{:.1f}",
-          "RZ_Share": "{:.1f}",
-          "RZ_Opp_PG": "{:.2f}",
-          "I5_Opp_PG": "{:.2f}",
-          "I5_Opp_Allowed": "{:.0f}",
-          "I10_Opp_Allowed": "{:.0f}",
-          "TD_Allowed": "{:.0f}"
-      })
-  )
+    st.dataframe(styled_td, hide_index=True, use_container_width=True)
+    with st.expander("Advanced TD Match statistics"):
+        advanced_view = td_match[td_match_display + advanced_td_columns]
+        st.dataframe(advanced_view, hide_index=True, use_container_width=True)
 
-    st.dataframe(
-        styled_td,
-        hide_index=True,
-        use_container_width=True
-    )
-  
-
+    # Pregame snapshot is captured only when requested, not silently
+    # overwritten by live recalculations. Download for durable history.
+    st.divider()
+    st.subheader("📋 Pregame TD Tracking")
+    st.caption("Capture before kickoff. Download the CSV to preserve rankings across app restarts.")
+    if "nfl_td_snapshots" not in st.session_state:
+        st.session_state["nfl_td_snapshots"] = {}
+    if st.button("Capture current pregame rankings", key="capture_td_snapshot"):
+        stamp = pd.Timestamp.now(tz="America/New_York").isoformat()
+        snap = tracker_ratings[[
+            "Player_ID", "Player", "Team", "Opp", "TD_Rank", "Team_Rank",
+            "TD_Match", "RZ_Share", "Bet_Tier"
+        ]].copy()
+        snap["Season"] = 2026
+        snap["Week"] = next_week
+        snap["Captured_ET"] = stamp
+        st.session_state["nfl_td_snapshots"][next_week] = snap
+        st.success("Snapshot captured for this session. Download it to retain a permanent copy.")
+    snapshot = st.session_state["nfl_td_snapshots"].get(next_week)
+    if snapshot is not None:
+        st.download_button(
+            "Download pregame snapshot CSV",
+            data=snapshot.to_csv(index=False).encode("utf-8"),
+            file_name=f"nfl_td_pregame_2026_week_{next_week}.csv",
+            mime="text/csv", key="download_td_snapshot"
+        )
 
     # -----------------------------
     # OPTIONAL MONTE CARLO TD SIMULATOR
