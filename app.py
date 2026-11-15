@@ -816,7 +816,7 @@ try:
     st.subheader("🎲 Anytime TD Simulator")
     st.caption("Availability uses ESPN injury reports, not official game-day inactives. No reported issue does not mean confirmed active.")
     st.caption(
-        "Experimental 10,000-run estimate based on scoring opportunities and "
+        "Experimental Monte Carlo estimate based on scoring opportunities and "
         "opponent TD allowance. Independent of TD Match rankings and bet tiers."
     )
     @st.cache_data(ttl=300, show_spinner=False)
@@ -884,7 +884,8 @@ try:
                     finished.add(aliases.get(team, team))
         return finished
 
-    if st.button("Run 10,000 Simulations", type="primary", key="run_td_sim"):
+    sim_runs = st.selectbox("Simulation runs", [10000, 50000, 100000], index=0, format_func=lambda n: f"{n:,} runs", key="nfl_sim_runs")
+    if st.button(f"Run {sim_runs:,} Simulations", type="primary", key="run_td_sim"):
         if td_match.empty:
             st.info("No players available for the selected slate.")
         else:
@@ -981,7 +982,7 @@ try:
             rng = np.random.default_rng(2026 + int(next_week))
             # Simulate shared team scoring pools rather than independent
             # player counts; this captures within-team competition.
-            simulated_tds = np.zeros((10000, len(sim)), dtype=np.int16)
+            simulated_tds = np.zeros((sim_runs, len(sim)), dtype=np.int16)
             team_values = sim["Team"].to_numpy()
             for team in pd.unique(team_values):
                 indexes = np.flatnonzero(team_values == team)
@@ -989,7 +990,7 @@ try:
                 team_mean = float(intensities.sum())
                 if team_mean <= 0:
                     continue
-                team_counts = rng.poisson(team_mean, size=10000)
+                team_counts = rng.poisson(team_mean, size=sim_runs)
                 weights = intensities / team_mean
                 for trial, total in enumerate(team_counts):
                     if total:
