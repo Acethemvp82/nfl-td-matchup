@@ -1022,17 +1022,27 @@ try:
                 "Strong agreement", "No strong agreement"
             )
             sim = sim.sort_values("Sim_TD_Chance", ascending=False)
+            # Put decision-useful columns first; preserve all simulation data.
             sim_display = sim[[
-                "Player", "Team", "Opp", "Position", "Availability", "TD_Rank", "Team_Rank",
-                "TD_Match", "Bet_Tier", "Agreement", "Sim_TD_Chance",
-                "Sim_2Plus_Chance", "Sim_Avg_TDs"
+                "Player", "Team", "TD_Rank", "TD_Match", "Sim_TD_Chance",
+                "Agreement", "Bet_Tier", "Availability", "Opp", "Position",
+                "Team_Rank", "Sim_2Plus_Chance", "Sim_Avg_TDs"
             ]].copy()
+            sim_display = sim_display.rename(columns={
+                "TD_Rank": "TD Rank",
+                "TD_Match": "TD Match",
+                "Sim_TD_Chance": "Sim TD %",
+                "Bet_Tier": "Bet Tier",
+                "Team_Rank": "Team Rank",
+                "Sim_2Plus_Chance": "Sim 2+ TD %",
+                "Sim_Avg_TDs": "Sim Avg TDs",
+            })
             st.dataframe(
-                sim_display.style.map(navy_cell).map(color_td_match, subset=["TD_Match"]).format({
-                    "TD_Match": "{:.1f}",
-                    "Sim_TD_Chance": "{:.1f}%",
-                    "Sim_2Plus_Chance": "{:.1f}%",
-                    "Sim_Avg_TDs": "{:.2f}"
+                sim_display.style.map(navy_cell).map(color_td_match, subset=["TD Match"]).format({
+                    "TD Match": "{:.1f}",
+                    "Sim TD %": "{:.1f}%",
+                    "Sim 2+ TD %": "{:.1f}%",
+                    "Sim Avg TDs": "{:.2f}"
                 }),
                 hide_index=True, use_container_width=True
             )
