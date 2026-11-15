@@ -307,7 +307,8 @@ try:
         "Rec_TD",
         "TDs"
     ]
-    with st.expander("Offensive TD Opportunity Research"):\n        st.dataframe(board[display_cols], hide_index=True, use_container_width=True)
+    with st.expander("Offensive TD Opportunity Research"):
+        st.dataframe(board[display_cols], hide_index=True, use_container_width=True)
     # -----------------------------
     # DEFENSIVE TD VULNERABILITY
     # -----------------------------
@@ -411,7 +412,8 @@ try:
         "TD_Allowed"
     ]
 
-    with st.expander("Opponent TD Vulnerability Research"):\n        st.dataframe(defense_board[defense_display], hide_index=True, use_container_width=True)
+    with st.expander("Opponent TD Vulnerability Research"):
+        st.dataframe(defense_board[defense_display], hide_index=True, use_container_width=True)
         # -----------------------------
     # UPCOMING MATCHUPS
     # -----------------------------
