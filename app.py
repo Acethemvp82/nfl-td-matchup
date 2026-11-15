@@ -814,6 +814,7 @@ try:
     # -----------------------------
     st.divider()
     st.subheader("🎲 Anytime TD Simulator")
+    st.info("Availability check: official game-day inactive status is not yet connected. Verify player availability before betting.")
     st.caption(
         "Experimental 10,000-run estimate based on scoring opportunities and "
         "opponent TD allowance. Independent of TD Match rankings and bet tiers."
@@ -899,6 +900,17 @@ try:
             sim["Sim_TD_Chance"] = (simulated_tds >= 1).mean(axis=0) * 100
             sim["Sim_2Plus_Chance"] = (simulated_tds >= 2).mean(axis=0) * 100
             sim["Sim_Avg_TDs"] = simulated_tds.mean(axis=0)
+            # Under the Poisson team-pool / multinomial allocation model,
+            # each player's marginal TD count is Poisson(expected_tds).
+            # Compare Monte Carlo output to the exact implied chance.
+            exact_td_chance = -np.expm1(-expected_tds.to_numpy()) * 100
+            sim["Sim_Error_pp"] = np.abs(sim["Sim_TD_Chance"].to_numpy() - exact_td_chance)
+            max_error = float(sim["Sim_Error_pp"].max())
+            st.caption(
+                f"Simulation stability: largest Monte Carlo sampling difference "
+                f"from the model's exact implied 1+ TD chance is {max_error:.2f} percentage points. "
+                "This checks numerical stability, not real-world prediction accuracy."
+            )
             sim["Sim_Rank"] = sim["Sim_TD_Chance"].rank(ascending=False, method="min").astype(int)
             # Agreement is relative to this selected slate, not the
             # full-season TD_Rank numbers.
