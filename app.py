@@ -1229,7 +1229,7 @@ try:
                     .map(navy_cell)
                     .map(color_td_match, subset=["TD_Match"])
                     .map(color_rz_share, subset=["RZ_Share"])
-                    .format({"TD_Match": "{:.1f}", "RZ_Share": "{:.1f}%"}, na_rep="—")
+                    .format({"TD_Match": "{:.0f}", "RZ_Share": "{:.0f}%", "TD_Rank": "{:.0f}", "Team_Rank": "{:.0f}", "Actual_TDs": "{:.0f}"}, na_rep="—")
                 )
                 st.dataframe(live_styled, hide_index=True, use_container_width=True)
             st.caption(
