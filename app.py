@@ -808,7 +808,7 @@ try:
     st.dataframe(styled_td, hide_index=True, use_container_width=True)
     with st.expander("Advanced TD Match statistics"):
         advanced_view = td_match[td_match_display + advanced_td_columns]
-        st.dataframe(advanced_view, hide_index=True, use_container_width=True)
+        st.dataframe(advanced_view.style.map(navy_cell), hide_index=True, use_container_width=True)
 
     # -----------------------------
     # OPTIONAL MONTE CARLO TD SIMULATOR
