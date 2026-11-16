@@ -38,7 +38,8 @@ div.stButton > button[kind="primary"] {
     color: #eef4fa !important;
     border-color: #1d4ed8 !important;
 }
-[data-testid="stDataFrame"] { border-radius: 10px; }
+[data-testid="stDataFrame"] { border-radius: 10px; background: #172236; }
+[data-testid="stDataFrame"] [role="columnheader"] { background: #172236 !important; color: #eef4fa !important; }
 </style>""", unsafe_allow_html=True)
 
 def navy_cell(value):
@@ -1219,10 +1220,18 @@ try:
                 unmatched_count = int(results["TD_Match"].isna().sum())
                 if unmatched_count:
                     st.caption(f"{unmatched_count} scorer(s) have no current-week model ranking. Rankings are never guessed.")
-                st.dataframe(results[[
+                live_display = results[[
                     "Player", "Team", "Actual_TDs", "TD_Types", "TD_Rank",
                     "Team_Rank", "TD_Match", "RZ_Share", "Bet_Tier", "Model_Status"
-                ]], hide_index=True, use_container_width=True)
+                ]]
+                live_styled = (
+                    live_display.style
+                    .map(navy_cell)
+                    .map(color_td_match, subset=["TD_Match"])
+                    .map(color_rz_share, subset=["RZ_Share"])
+                    .format({"TD_Match": "{:.1f}", "RZ_Share": "{:.1f}%"}, na_rep="—")
+                )
+                st.dataframe(live_styled, hide_index=True, use_container_width=True)
             st.caption(
                 f"ESPN games started/completed: {live_games}. Results refresh when the "
                 "app reruns, with a 60-second data cache. No manual upload needed."
