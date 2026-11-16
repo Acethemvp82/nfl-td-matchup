@@ -323,7 +323,7 @@ try:
     # -----------------------------
     # DISPLAY
     # -----------------------------
-    st.subheader("🎯 Offensive TD Opportunity Board")
+    st.caption("Supporting research (optional): expand either table to inspect the inputs behind TD Match.")
 
     display_cols = [
         "Rank",
@@ -339,13 +339,12 @@ try:
         "Rec_TD",
         "TDs"
     ]
-    with st.expander("Offensive TD Opportunity Research"):
+    with st.expander("Offensive TD Opportunity · Research", expanded=False):
         st.dataframe(board[display_cols], hide_index=True, use_container_width=True)
     # -----------------------------
     # DEFENSIVE TD VULNERABILITY
     # -----------------------------
-    st.divider()
-    st.subheader("🛡️ Opponent TD Vulnerability")
+    # Defense research remains available in the collapsed research section.
 
     # Rushing opportunities allowed
     def_rush = (
@@ -444,7 +443,7 @@ try:
         "TD_Allowed"
     ]
 
-    with st.expander("Opponent TD Vulnerability Research"):
+    with st.expander("Opponent TD Vulnerability · Research", expanded=False):
         st.dataframe(defense_board[defense_display], hide_index=True, use_container_width=True)
         # -----------------------------
     # UPCOMING MATCHUPS
